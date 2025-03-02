@@ -2,14 +2,24 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, Filter, X } from 'lucide-react';
+import { Filter, X } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
-import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 
+// Define a type that matches our database schema
+interface Product {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  image: string;
+  category: string;
+  stock: number;
+}
+
 // Fetch products from Supabase
-const fetchProducts = async () => {
+const fetchProducts = async (): Promise<Product[]> => {
   const { data, error } = await supabase
     .from('products')
     .select('*');

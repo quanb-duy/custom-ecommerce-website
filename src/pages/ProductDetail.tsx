@@ -1,27 +1,31 @@
 
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
-import { 
-  ShoppingCart, 
-  Minus, 
-  Plus, 
-  Check, 
-  Truck, 
-  RefreshCw, 
-  ShieldCheck,
-  ChevronLeft 
-} from 'lucide-react';
-import { motion } from 'framer-motion';
-import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { ShoppingCart, ChevronLeft, Plus, Minus } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 import { useCart } from '@/contexts/CartContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-// Fetch a single product from Supabase
-const fetchProduct = async (id: string) => {
+// Using a type that's compatible with our database schema
+interface Product {
+  id: number;
+  name: string;
+  description: string;
+  long_description?: string;
+  price: number;
+  image: string;
+  category: string;
+  features?: string[];
+  specifications?: Record<string, any>;
+  stock: number;
+}
+
+const fetchProductById = async (id: string): Promise<Product> => {
   const { data, error } = await supabase
     .from('products')
     .select('*')
@@ -36,259 +40,177 @@ const fetchProduct = async (id: string) => {
 };
 
 const ProductDetail = () => {
-  const { id } = useParams();
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [quantity, setQuantity] = useState(1);
-  const [selectedImage, setSelectedImage] = useState(0);
-  const { addToCart } = useCart();
-  const { user } = useAuth();
-  const { toast } = useToast();
+  const { addToCart, isLoading: isCartLoading } = useCart();
   
-  // Fetch product using React Query
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['product', id],
-    queryFn: () => fetchProduct(id || '0'),
-    enabled: !!id
+    queryFn: () => fetchProductById(id!),
+    enabled: !!id,
   });
-  
+
+  const handleQuantityChange = (amount: number) => {
+    const newQuantity = quantity + amount;
+    if (newQuantity >= 1 && newQuantity <= (product?.stock || 10)) {
+      setQuantity(newQuantity);
+    }
+  };
+
+  const handleAddToCart = async () => {
+    if (product) {
+      await addToCart(product.id, quantity);
+    }
+  };
+
   if (isLoading) {
     return (
       <Layout>
         <div className="container mx-auto px-4 py-16 pt-24">
-          <div className="flex justify-center items-center min-h-[50vh]">
+          <div className="flex justify-center items-center min-h-[60vh]">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
           </div>
         </div>
       </Layout>
     );
   }
-  
+
   if (error || !product) {
     return (
       <Layout>
-        <div className="container mx-auto px-4 py-16 pt-24 text-center">
-          <h1 className="text-3xl font-bold mb-6">Product Not Found</h1>
-          <p className="mb-8">Sorry, the product you're looking for doesn't exist or has been removed.</p>
-          <Button asChild>
-            <Link to="/products">Return to Products</Link>
-          </Button>
+        <div className="container mx-auto px-4 py-16 pt-24">
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-medium mb-4">Product not found</h2>
+            <p className="text-gray-500 mb-6">
+              The product you're looking for doesn't exist or has been removed.
+            </p>
+            <Button onClick={() => navigate('/products')}>
+              <ChevronLeft className="mr-2 h-4 w-4" />
+              Back to Products
+            </Button>
+          </div>
         </div>
       </Layout>
     );
   }
-  
-  // Parse specifications from JSON if needed
-  const specifications = typeof product.specifications === 'string' 
-    ? JSON.parse(product.specifications) 
-    : product.specifications;
-  
-  // Prepare images array
-  const images = product.images 
-    ? (Array.isArray(product.images) ? product.images : [product.images]) 
-    : [product.image];
-  
-  const handleAddToCart = () => {
-    if (!user) {
-      toast({
-        title: "Please sign in",
-        description: "You need to be signed in to add items to your cart",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    addToCart(product.id, quantity);
-    
-    toast({
-      title: "Added to cart",
-      description: `${quantity} × ${product.name} added to your cart`,
-      action: (
-        <Link to="/cart">
-          <Button variant="outline" size="sm">
-            View Cart
-          </Button>
-        </Link>
-      ),
-    });
-  };
-  
-  const decreaseQuantity = () => {
-    if (quantity > 1) {
-      setQuantity(quantity - 1);
-    }
-  };
-  
-  const increaseQuantity = () => {
-    if (quantity < (product.stock || 10)) {
-      setQuantity(quantity + 1);
-    }
-  };
 
   return (
     <Layout>
       <div className="container mx-auto px-4 py-16 pt-24">
-        {/* Breadcrumb */}
-        <div className="mb-8">
-          <Link to="/products" className="text-gray-500 hover:text-gray-800 flex items-center">
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Back to Products
-          </Link>
-        </div>
+        <Button 
+          variant="ghost" 
+          className="mb-6" 
+          onClick={() => navigate('/products')}
+        >
+          <ChevronLeft className="mr-2 h-4 w-4" />
+          Back to Products
+        </Button>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-          {/* Product images */}
-          <div>
-            <div className="relative aspect-square overflow-hidden rounded-lg bg-gray-100 mb-4">
-              <motion.img 
-                key={selectedImage}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
-                src={images[selectedImage] || product.image} 
-                alt={product.name}
-                className="w-full h-full object-cover" 
-              />
-            </div>
-            
-            {/* Thumbnail gallery */}
-            {images.length > 1 && (
-              <div className="grid grid-cols-4 gap-2">
-                {images.map((image, idx) => (
-                  <button 
-                    key={idx}
-                    className={`aspect-square rounded-md overflow-hidden border-2 ${
-                      selectedImage === idx 
-                        ? 'border-black' 
-                        : 'border-transparent hover:border-gray-300'
-                    }`}
-                    onClick={() => setSelectedImage(idx)}
-                  >
-                    <img 
-                      src={image} 
-                      alt={`${product.name} view ${idx + 1}`}
-                      className="w-full h-full object-cover" 
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+          {/* Product Image */}
+          <div className="bg-white rounded-xl overflow-hidden shadow-sm">
+            <img 
+              src={product.image} 
+              alt={product.name} 
+              className="w-full h-auto object-cover"
+            />
           </div>
           
-          {/* Product details */}
+          {/* Product Details */}
           <div>
-            <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
-            <div className="text-2xl font-medium mb-4">${product.price?.toFixed(2)}</div>
+            <div className="mb-6">
+              <Badge className="mb-3">{product.category}</Badge>
+              <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
+              <p className="text-2xl font-semibold text-gray-900">
+                ${product.price.toFixed(2)}
+              </p>
+            </div>
             
             <p className="text-gray-600 mb-6">{product.description}</p>
             
-            {/* Stock status */}
-            <div className="flex items-center mb-6">
-              <div className={`h-3 w-3 rounded-full mr-2 ${
-                (product.stock || 0) > 10 ? 'bg-green-500' : 
-                (product.stock || 0) > 5 ? 'bg-yellow-500' : 'bg-red-500'
-              }`}></div>
-              <span className="text-sm">
-                {(product.stock || 0) > 10 ? 'In Stock' : 
-                 (product.stock || 0) > 0 ? `Only ${product.stock} left` : 'Out of Stock'}
-              </span>
-            </div>
-            
-            {/* Quantity selector */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">Quantity</label>
-              <div className="flex items-center">
-                <button 
-                  onClick={decreaseQuantity}
-                  disabled={quantity <= 1}
-                  className="border border-gray-300 rounded-l-md p-2 hover:bg-gray-100 disabled:opacity-50"
+            <div className="flex items-center space-x-4 mb-6">
+              <div className="flex items-center border rounded-md">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => handleQuantityChange(-1)}
+                  disabled={quantity <= 1 || isCartLoading}
                 >
                   <Minus className="h-4 w-4" />
-                </button>
-                <input 
-                  type="number" 
-                  min="1" 
-                  max={product.stock || 10}
-                  value={quantity} 
-                  onChange={(e) => setQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), product.stock || 10))}
-                  className="border-y border-gray-300 p-2 w-16 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-                <button 
-                  onClick={increaseQuantity}
-                  disabled={quantity >= (product.stock || 10)}
-                  className="border border-gray-300 rounded-r-md p-2 hover:bg-gray-100 disabled:opacity-50"
+                </Button>
+                <span className="w-12 text-center">{quantity}</span>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => handleQuantityChange(1)}
+                  disabled={quantity >= (product.stock || 10) || isCartLoading}
                 >
                   <Plus className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
+              
+              <Button 
+                className="flex-1" 
+                onClick={handleAddToCart}
+                disabled={isCartLoading}
+              >
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                {isCartLoading ? 'Adding...' : 'Add to Cart'}
+              </Button>
             </div>
             
-            {/* Add to cart button */}
-            <Button 
-              onClick={handleAddToCart}
-              className="w-full flex items-center justify-center gap-2 mb-6"
-              disabled={(product.stock || 0) <= 0}
-            >
-              <ShoppingCart className="h-5 w-5" />
-              Add to Cart
-            </Button>
-            
-            {/* Benefits */}
-            <div className="border-t border-b py-6 mb-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex items-center">
-                  <Truck className="h-5 w-5 mr-2 text-gray-600" />
-                  <span className="text-sm">Free Shipping</span>
-                </div>
-                <div className="flex items-center">
-                  <RefreshCw className="h-5 w-5 mr-2 text-gray-600" />
-                  <span className="text-sm">30-Day Returns</span>
-                </div>
-                <div className="flex items-center">
-                  <ShieldCheck className="h-5 w-5 mr-2 text-gray-600" />
-                  <span className="text-sm">2-Year Warranty</span>
-                </div>
-              </div>
+            <div className="border rounded-md p-3 bg-gray-50 mb-6">
+              <p className="text-sm">
+                <span className="font-medium">Availability: </span>
+                {product.stock > 0 ? (
+                  <span className="text-green-600">In Stock ({product.stock} available)</span>
+                ) : (
+                  <span className="text-red-600">Out of Stock</span>
+                )}
+              </p>
             </div>
             
-            {/* Product description */}
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">Description</h2>
-              <p className="text-gray-600 leading-relaxed">{product.long_description || product.description}</p>
-            </div>
+            <Separator className="my-6" />
             
-            {/* Features */}
-            {product.features && product.features.length > 0 && (
-              <div className="mb-8">
-                <h2 className="text-xl font-semibold mb-4">Features</h2>
-                <ul className="space-y-2">
-                  {product.features.map((feature, index) => (
-                    <li key={index} className="flex items-start">
-                      <Check className="h-5 w-5 mr-2 text-green-500 flex-shrink-0 mt-0.5" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            
-            {/* Specifications */}
-            {specifications && Object.keys(specifications).length > 0 && (
-              <div>
-                <h2 className="text-xl font-semibold mb-4">Specifications</h2>
-                <div className="bg-gray-50 rounded-lg overflow-hidden">
-                  {Object.entries(specifications).map(([key, value], index, array) => (
-                    <div 
-                      key={key}
-                      className={`flex ${
-                        index !== array.length - 1 ? 'border-b border-gray-200' : ''
-                      }`}
-                    >
-                      <div className="w-1/3 bg-gray-100 p-3 font-medium">{key}</div>
-                      <div className="w-2/3 p-3">{value as string}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <Tabs defaultValue="description">
+              <TabsList className="mb-4">
+                <TabsTrigger value="description">Description</TabsTrigger>
+                <TabsTrigger value="specifications">Specifications</TabsTrigger>
+                <TabsTrigger value="features">Features</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="description" className="text-gray-600">
+                {product.long_description || product.description}
+              </TabsContent>
+              
+              <TabsContent value="specifications">
+                {product.specifications && Object.keys(product.specifications).length > 0 ? (
+                  <div className="space-y-2">
+                    {Object.entries(product.specifications).map(([key, value]) => (
+                      <div key={key} className="grid grid-cols-3 py-2 border-b">
+                        <span className="font-medium text-gray-700">{key}</span>
+                        <span className="col-span-2 text-gray-600">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">No specifications available.</p>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="features">
+                {product.features && product.features.length > 0 ? (
+                  <ul className="list-disc list-inside space-y-2 text-gray-600">
+                    {product.features.map((feature, index) => (
+                      <li key={index}>{feature}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500">No features listed.</p>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>

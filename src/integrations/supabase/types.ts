@@ -9,7 +9,104 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      cart_items: {
+        Row: {
+          created_at: string | null
+          id: number
+          product_id: number | null
+          quantity: number
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          product_id?: number | null
+          quantity?: number
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          product_id?: number | null
+          quantity?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cart_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          category: string
+          created_at: string | null
+          description: string
+          features: string[] | null
+          id: number
+          image: string
+          long_description: string | null
+          name: string
+          price: number
+          specifications: Json | null
+          stock: number
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          description: string
+          features?: string[] | null
+          id?: number
+          image: string
+          long_description?: string | null
+          name: string
+          price: number
+          specifications?: Json | null
+          stock?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          description?: string
+          features?: string[] | null
+          id?: number
+          image?: string
+          long_description?: string | null
+          name?: string
+          price?: number
+          specifications?: Json | null
+          stock?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
