@@ -1,73 +1,74 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart, Filter, X } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import { motion } from 'framer-motion';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 
-// Sample product data
-const productData = [
-  {
-    id: 1,
-    name: "Modern Minimalist Sofa",
-    description: "A sleek, comfortable sofa with clean lines and premium upholstery. Perfect for contemporary living spaces.",
-    price: 899.99,
-    image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1770&q=80",
-    category: "Furniture"
-  },
-  {
-    id: 2,
-    name: "Elegant Table Lamp",
-    description: "Stylish table lamp with adjustable brightness. Creates a warm, inviting atmosphere in any room.",
-    price: 129.99,
-    image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1770&q=80",
-    category: "Lighting"
-  },
-  {
-    id: 3,
-    name: "Artisan Ceramic Vase",
-    description: "Handcrafted ceramic vase with unique glazing. Each piece has subtle variations making it one-of-a-kind.",
-    price: 79.99,
-    image: "https://images.unsplash.com/photo-1612295592824-d9d02eea7828?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1770&q=80",
-    category: "Decor"
-  },
-  {
-    id: 4,
-    name: "Scandinavian Dining Chair",
-    description: "Beautifully crafted wooden dining chair with ergonomic design. Combines style and comfort.",
-    price: 249.99,
-    image: "https://images.unsplash.com/photo-1503602642458-232111445657?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1770&q=80",
-    category: "Furniture"
-  },
-  {
-    id: 5,
-    name: "Pendant Ceiling Light",
-    description: "Modern pendant light with adjustable height. Creates focused lighting for dining tables or kitchen islands.",
-    price: 189.99,
-    image: "https://images.unsplash.com/photo-1530603907829-662ab52230b4?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1773&q=80",
-    category: "Lighting"
-  },
-  {
-    id: 6,
-    name: "Abstract Wall Art",
-    description: "Contemporary abstract canvas print. Adds a splash of color and artistic flair to any room.",
-    price: 159.99,
-    image: "https://images.unsplash.com/photo-1549887534-1541e9326642?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1765&q=80",
-    category: "Decor"
+// Fetch products from Supabase
+const fetchProducts = async () => {
+  const { data, error } = await supabase
+    .from('products')
+    .select('*');
+  
+  if (error) {
+    throw new Error(error.message);
   }
-];
-
-const categories = ["All", "Furniture", "Lighting", "Decor"];
+  
+  return data || [];
+};
 
 const Products = () => {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  
+  // Fetch products using React Query
+  const { data: products = [], isLoading, error } = useQuery({
+    queryKey: ['products'],
+    queryFn: fetchProducts
+  });
+  
+  // Extract unique categories
+  useEffect(() => {
+    if (products.length > 0) {
+      const uniqueCategories = ['All', ...new Set(products.map(product => product.category))];
+      setCategories(uniqueCategories);
+    }
+  }, [products]);
   
   // Filter products based on selected category
   const filteredProducts = selectedCategory === "All" 
-    ? productData 
-    : productData.filter(product => product.category === selectedCategory);
+    ? products 
+    : products.filter(product => product.category === selectedCategory);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-16 pt-24">
+          <div className="flex justify-center items-center min-h-[50vh]">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-16 pt-24">
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-medium mb-4">Error loading products</h2>
+            <p className="text-gray-500">{(error as Error).message}</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -107,8 +108,8 @@ const Products = () => {
                     {selectedCategory === category && (
                       <span className="float-right text-gray-400">
                         ({selectedCategory === "All" 
-                          ? productData.length 
-                          : productData.filter(p => p.category === selectedCategory).length})
+                          ? products.length 
+                          : products.filter(p => p.category === selectedCategory).length})
                       </span>
                     )}
                   </button>

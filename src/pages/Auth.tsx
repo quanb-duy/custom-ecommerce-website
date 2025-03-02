@@ -1,10 +1,35 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import Layout from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { FcGoogle } from 'react-icons/fc';
 
 const Auth = () => {
+  const { signIn, signUp, signInWithGoogle, isLoading } = useAuth();
+  
+  // Login form state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  
+  // Register form state
+  const [registerName, setRegisterName] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await signIn(loginEmail, loginPassword);
+  };
+  
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await signUp(registerEmail, registerPassword, registerName);
+  };
+
   return (
     <Layout>
       <div className="container mx-auto px-4 py-16 pt-24 flex justify-center">
@@ -17,57 +42,131 @@ const Auth = () => {
             
             <TabsContent value="login" className="space-y-4">
               <h2 className="text-2xl font-semibold mb-4">Welcome Back</h2>
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input 
-                  type="email" 
-                  id="email" 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/5"
-                  placeholder="Your email" 
-                />
+              
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input 
+                    type="email" 
+                    id="email" 
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="Your email" 
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input 
+                    type="password" 
+                    id="password" 
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Your password" 
+                    required
+                  />
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  className="w-full" 
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </form>
+              
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                </div>
               </div>
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input 
-                  type="password" 
-                  id="password" 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/5"
-                  placeholder="Your password" 
-                />
-              </div>
-              <Button className="w-full">Login</Button>
+              
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full" 
+                onClick={signInWithGoogle}
+                disabled={isLoading}
+              >
+                <FcGoogle className="mr-2 h-5 w-5" />
+                Sign in with Google
+              </Button>
             </TabsContent>
             
             <TabsContent value="register" className="space-y-4">
               <h2 className="text-2xl font-semibold mb-4">Create Account</h2>
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input 
-                  type="text" 
-                  id="name" 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/5"
-                  placeholder="Your name" 
-                />
+              
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input 
+                    type="text" 
+                    id="name" 
+                    value={registerName}
+                    onChange={(e) => setRegisterName(e.target.value)}
+                    placeholder="Your full name" 
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="reg-email">Email</Label>
+                  <Input 
+                    type="email" 
+                    id="reg-email" 
+                    value={registerEmail}
+                    onChange={(e) => setRegisterEmail(e.target.value)}
+                    placeholder="Your email" 
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="reg-password">Password</Label>
+                  <Input 
+                    type="password" 
+                    id="reg-password" 
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    placeholder="Create a password (min. 6 characters)" 
+                    required
+                    minLength={6}
+                  />
+                </div>
+                
+                <Button 
+                  type="submit" 
+                  className="w-full"
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Creating account...' : 'Create Account'}
+                </Button>
+              </form>
+              
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                </div>
               </div>
-              <div>
-                <label htmlFor="reg-email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input 
-                  type="email" 
-                  id="reg-email" 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/5"
-                  placeholder="Your email" 
-                />
-              </div>
-              <div>
-                <label htmlFor="reg-password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input 
-                  type="password" 
-                  id="reg-password" 
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/5"
-                  placeholder="Create a password" 
-                />
-              </div>
-              <Button className="w-full">Create Account</Button>
+              
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full" 
+                onClick={signInWithGoogle}
+                disabled={isLoading}
+              >
+                <FcGoogle className="mr-2 h-5 w-5" />
+                Sign up with Google
+              </Button>
             </TabsContent>
           </Tabs>
         </div>

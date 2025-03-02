@@ -4,6 +4,9 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useCart } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 interface Product {
   id: number;
@@ -34,6 +37,25 @@ const item = {
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isImageLoaded, setIsImageLoaded] = useState(false);
+  const { addToCart } = useCart();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!user) {
+      toast({
+        title: "Please sign in",
+        description: "You need to be signed in to add items to your cart",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    addToCart(product.id, 1);
+  };
   
   return (
     <motion.div 
@@ -71,7 +93,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         
         {/* Quick add overlay */}
         <div className={`absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`}>
-          <Button variant="secondary" size="sm" className="w-full gap-2 hover:bg-white">
+          <Button 
+            variant="secondary" 
+            size="sm" 
+            className="w-full gap-2 hover:bg-white"
+            onClick={handleAddToCart}
+          >
             <ShoppingCart className="h-4 w-4" />
             Quick Add
           </Button>
@@ -90,7 +117,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         </p>
         <div className="flex items-center justify-between">
           <p className="font-medium">
-            ${product.price.toFixed(2)}
+            ${product.price?.toFixed(2)}
           </p>
           <div className="text-xs text-gray-500">Free shipping</div>
         </div>
