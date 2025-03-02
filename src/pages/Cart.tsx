@@ -1,4 +1,3 @@
-
 import React from 'react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -80,7 +79,6 @@ const Cart = () => {
               <div className="divide-y">
                 {cartItems.map((item) => (
                   <div key={item.id} className="p-6 flex flex-col sm:flex-row gap-4">
-                    {/* Product image */}
                     <div className="flex-shrink-0">
                       <Link to={`/products/${item.product_id}`}>
                         <img 
@@ -91,7 +89,6 @@ const Cart = () => {
                       </Link>
                     </div>
                     
-                    {/* Product details */}
                     <div className="flex-grow">
                       <Link to={`/products/${item.product_id}`}>
                         <h3 className="font-medium text-lg hover:underline">{item.product.name}</h3>
@@ -135,7 +132,6 @@ const Cart = () => {
             </div>
           </div>
           
-          {/* Order summary */}
           <div>
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h2 className="text-xl font-medium mb-4">Order Summary</h2>

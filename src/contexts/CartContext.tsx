@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
@@ -28,6 +27,8 @@ interface CartContextType {
   updateQuantity: (cartItemId: number, quantity: number) => Promise<void>;
   isLoading: boolean;
   cartTotal: number;
+  subtotal: number;
+  totalItems: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -42,6 +43,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Calculate cart total
   const cartTotal = cartItems.reduce((total, item) => {
     return total + (item.product.price * item.quantity);
+  }, 0);
+
+  // Calculate subtotal (same as cartTotal for now, but could be different if we add discounts)
+  const subtotal = cartTotal;
+
+  // Calculate total items
+  const totalItems = cartItems.reduce((total, item) => {
+    return total + item.quantity;
   }, 0);
 
   // Fetch cart items when user changes
@@ -203,6 +212,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateQuantity,
     isLoading,
     cartTotal,
+    subtotal,
+    totalItems,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

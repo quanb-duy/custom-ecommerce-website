@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -10,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Json } from '@/integrations/supabase/types';
 
 // Using a type that's compatible with our database schema
 interface Product {
@@ -25,7 +25,7 @@ interface Product {
   stock: number;
 }
 
-const fetchProductById = async (id: string): Promise<Product> => {
+const fetchProductById = async (id: number): Promise<Product> => {
   const { data, error } = await supabase
     .from('products')
     .select('*')
@@ -36,7 +36,13 @@ const fetchProductById = async (id: string): Promise<Product> => {
     throw new Error(error.message);
   }
   
-  return data;
+  // Convert specifications from Json to Record<string, any>
+  const product = {
+    ...data,
+    specifications: data.specifications ? data.specifications as Record<string, any> : {}
+  };
+  
+  return product as Product;
 };
 
 const ProductDetail = () => {
@@ -47,7 +53,7 @@ const ProductDetail = () => {
   
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['product', id],
-    queryFn: () => fetchProductById(id!),
+    queryFn: () => fetchProductById(Number(id)),
     enabled: !!id,
   });
 
