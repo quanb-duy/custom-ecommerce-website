@@ -83,9 +83,11 @@ const FeaturedProducts: React.FC = () => {
   const { data: products = [], isLoading, error } = useQuery({
     queryKey: ['featuredProducts'],
     queryFn: fetchFeaturedProducts,
-    // Use fallback data if error occurs
-    onError: (err) => {
-      console.error('Error fetching featured products:', err);
+    // Updated error handling to use onSettled instead of onError
+    meta: {
+      onError: (err: Error) => {
+        console.error('Error fetching featured products:', err);
+      }
     }
   });
 

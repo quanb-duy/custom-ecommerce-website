@@ -43,7 +43,7 @@ const NotFound = () => {
             </Button>
             
             <Button asChild variant="outline" className="w-full gap-2">
-              <Link to={-1}>
+              <Link to="..">
                 <ArrowLeft className="h-4 w-4" />
                 Go Back
               </Link>
