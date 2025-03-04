@@ -4,9 +4,26 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Instagram, Twitter, Facebook, Linkedin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 
 const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
+  const { toast } = useToast();
+  
+  const handleSubscribe = (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const emailInput = form.querySelector('input[type="email"]') as HTMLInputElement;
+    const email = emailInput.value;
+    
+    if (email) {
+      toast({
+        title: "Newsletter subscription successful!",
+        description: `Thank you for subscribing with ${email}. You'll receive our next newsletter soon.`,
+      });
+      emailInput.value = '';
+    }
+  };
   
   return (
     <footer className="bg-gray-50 pt-16 pb-8">
@@ -20,7 +37,7 @@ const Footer: React.FC = () => {
           
           <form 
             className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
-            onSubmit={(e) => e.preventDefault()}
+            onSubmit={handleSubscribe}
           >
             <Input 
               type="email" 
@@ -45,16 +62,16 @@ const Footer: React.FC = () => {
               Curated selection of premium products with timeless design and exceptional quality.
             </p>
             <div className="flex space-x-4">
-              <a href="#" className="text-gray-600 hover:text-black transition-colors">
+              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-black transition-colors">
                 <Instagram className="h-5 w-5" />
               </a>
-              <a href="#" className="text-gray-600 hover:text-black transition-colors">
+              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-black transition-colors">
                 <Twitter className="h-5 w-5" />
               </a>
-              <a href="#" className="text-gray-600 hover:text-black transition-colors">
+              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-black transition-colors">
                 <Facebook className="h-5 w-5" />
               </a>
-              <a href="#" className="text-gray-600 hover:text-black transition-colors">
+              <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-black transition-colors">
                 <Linkedin className="h-5 w-5" />
               </a>
             </div>
@@ -65,9 +82,9 @@ const Footer: React.FC = () => {
             <h4 className="font-medium mb-4">Shop</h4>
             <ul className="space-y-2">
               <li><Link to="/products" className="text-gray-600 hover:text-black transition-colors">All Products</Link></li>
-              <li><Link to="/products?category=furniture" className="text-gray-600 hover:text-black transition-colors">Furniture</Link></li>
-              <li><Link to="/products?category=lighting" className="text-gray-600 hover:text-black transition-colors">Lighting</Link></li>
-              <li><Link to="/products?category=decor" className="text-gray-600 hover:text-black transition-colors">Decor</Link></li>
+              <li><Link to="/products" className="text-gray-600 hover:text-black transition-colors">Furniture</Link></li>
+              <li><Link to="/products" className="text-gray-600 hover:text-black transition-colors">Lighting</Link></li>
+              <li><Link to="/products" className="text-gray-600 hover:text-black transition-colors">Decor</Link></li>
             </ul>
           </div>
           

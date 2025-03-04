@@ -4,9 +4,35 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ProductCard from './ProductCard';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
-// Sample product data
-const featuredProducts = [
+// Define product type
+interface Product {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  image: string;
+  category: string;
+}
+
+// Fetch featured products from Supabase
+const fetchFeaturedProducts = async (): Promise<Product[]> => {
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .limit(4);
+  
+  if (error) {
+    throw new Error(error.message);
+  }
+  
+  return data || [];
+};
+
+// Fallback products if database is not available
+const fallbackProducts = [
   {
     id: 1,
     name: 'Ergonomic Chair',
@@ -53,6 +79,19 @@ const container = {
 };
 
 const FeaturedProducts: React.FC = () => {
+  // Fetch featured products
+  const { data: products = [], isLoading, error } = useQuery({
+    queryKey: ['featuredProducts'],
+    queryFn: fetchFeaturedProducts,
+    // Use fallback data if error occurs
+    onError: (err) => {
+      console.error('Error fetching featured products:', err);
+    }
+  });
+
+  // Use fetched products or fallback to sample data if there's an error or no data
+  const displayProducts = products.length > 0 ? products : fallbackProducts;
+
   return (
     <section className="py-20 bg-white">
       <div className="container mx-auto px-4">
@@ -85,7 +124,7 @@ const FeaturedProducts: React.FC = () => {
           viewport={{ once: true, margin: "-100px" }}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8"
         >
-          {featuredProducts.map((product) => (
+          {displayProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </motion.div>
