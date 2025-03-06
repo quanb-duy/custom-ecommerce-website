@@ -6,6 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// Explicitly use the PORT environment variable provided by Railway
 const PORT = process.env.PORT || 8080;
 
 // Serve static files from the dist directory
@@ -16,7 +17,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// Explicitly listen on 0.0.0.0 to bind to all network interfaces
+// Explicitly bind to 0.0.0.0 to listen on all available network interfaces
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running at http://0.0.0.0:${PORT}/`);
 }); 
