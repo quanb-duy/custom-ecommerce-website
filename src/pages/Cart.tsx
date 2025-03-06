@@ -1,3 +1,4 @@
+
 import React from 'react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -157,8 +158,10 @@ const Cart = () => {
                 </div>
               </div>
               
-              <Button className="w-full mb-4">
-                Proceed to Checkout
+              <Button className="w-full mb-4" asChild>
+                <Link to="/checkout">
+                  Proceed to Checkout
+                </Link>
               </Button>
               
               <p className="text-sm text-gray-500 text-center mb-4">
