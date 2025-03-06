@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Json } from '@/integrations/supabase/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
 
 // Using a type that's compatible with our database schema
 interface Product {
@@ -52,6 +53,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const [quantity, setQuantity] = useState(1);
   const { addToCart, isLoading: isCartLoading } = useCart();
+  const { toast } = useToast();
   
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['product', id],
@@ -149,7 +151,7 @@ const ProductDetail = () => {
                 </AlertDescription>
               </Alert>
             ) : isLowStock ? (
-              <Alert variant="warning" className="mb-6">
+              <Alert variant="destructive" className="mb-6 bg-amber-50 text-amber-800 border-amber-200">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Low Stock</AlertTitle>
                 <AlertDescription>
