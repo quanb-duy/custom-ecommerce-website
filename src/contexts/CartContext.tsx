@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
@@ -17,6 +18,7 @@ export interface CartItem {
     image: string;
     description: string;
     category: string;
+    stock: number;
   };
 }
 
@@ -88,6 +90,23 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const getProductStock = async (productId: number): Promise<number> => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('stock')
+        .eq('id', productId)
+        .single();
+      
+      if (error) throw error;
+      
+      return data.stock || 0;
+    } catch (error) {
+      console.error('Error fetching product stock:', error);
+      return 0;
+    }
+  };
+
   const addToCart = async (productId: number, quantity: number = 1) => {
     if (!user) {
       toast({
@@ -102,14 +121,39 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       
+      // Get current stock level
+      const currentStock = await getProductStock(productId);
+      
       // Check if item already exists in cart
       const existingItem = cartItems.find(item => item.product_id === productId);
       
       if (existingItem) {
-        // Update quantity of existing item
+        // Calculate new quantity
         const newQuantity = existingItem.quantity + quantity;
+        
+        // Check if new quantity exceeds available stock
+        if (newQuantity > currentStock) {
+          toast({
+            title: "Stock limit reached",
+            description: `Sorry, only ${currentStock} items available in stock`,
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        // Update quantity of existing item
         await updateQuantity(existingItem.id, newQuantity);
       } else {
+        // Check if requested quantity exceeds available stock
+        if (quantity > currentStock) {
+          toast({
+            title: "Stock limit reached",
+            description: `Sorry, only ${currentStock} items available in stock`,
+            variant: "destructive",
+          });
+          return;
+        }
+        
         // Add new item to cart
         const { error } = await supabase
           .from('cart_items')
@@ -182,6 +226,26 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       
+      // Find the item to be updated
+      const itemToUpdate = cartItems.find(item => item.id === cartItemId);
+      if (!itemToUpdate) {
+        throw new Error('Cart item not found');
+      }
+      
+      // Check current stock level
+      const currentStock = await getProductStock(itemToUpdate.product_id);
+      
+      // Validate against stock level
+      if (quantity > currentStock) {
+        toast({
+          title: "Stock limit reached",
+          description: `Sorry, only ${currentStock} items available in stock`,
+          variant: "destructive",
+        });
+        // Set to maximum available stock instead of failing
+        quantity = currentStock;
+      }
+      
       const { error } = await supabase
         .from('cart_items')
         .update({ quantity })
@@ -193,6 +257,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCartItems(cartItems.map(item => 
         item.id === cartItemId ? { ...item, quantity } : item
       ));
+      
+      if (quantity === currentStock) {
+        toast({
+          title: "Maximum stock reached",
+          description: `Quantity updated to maximum available (${currentStock})`,
+          variant: "warning",
+        });
+      }
     } catch (error: any) {
       console.error('Error updating quantity:', error.message);
       toast({

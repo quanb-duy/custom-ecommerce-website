@@ -1,18 +1,26 @@
 
-import React, { useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
-import { Check, Package, ShoppingBag } from 'lucide-react';
+import { Check, Package, ShoppingBag, Truck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCart } from '@/contexts/CartContext';
 
 const OrderConfirmation = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { cartItems, subtotal } = useCart();
-
-  // Redirect to home if not authenticated or no cart items
+  const [searchParams] = useSearchParams();
+  const orderId = searchParams.get('orderId');
+  
+  // Generate random order number if not provided
+  const orderNumber = orderId || Math.floor(Math.random() * 10000);
+  
+  // Estimate delivery dates
+  const now = new Date();
+  const estimatedDeliveryStart = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const estimatedDeliveryEnd = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
+  
+  // Redirect to home if not authenticated
   useEffect(() => {
     if (!user) {
       navigate('/');
@@ -39,45 +47,47 @@ const OrderConfirmation = () => {
             <div className="space-y-4 mb-4">
               <div className="flex justify-between">
                 <span className="text-gray-600">Order Number</span>
-                <span className="font-medium">#ORD-{Math.floor(Math.random() * 10000)}</span>
+                <span className="font-medium">#{orderNumber}</span>
               </div>
               
               <div className="flex justify-between">
                 <span className="text-gray-600">Date</span>
-                <span>{new Date().toLocaleDateString()}</span>
+                <span>{now.toLocaleDateString()}</span>
               </div>
               
               <div className="flex justify-between">
-                <span className="text-gray-600">Total</span>
-                <span className="font-medium">${(subtotal + subtotal * 0.07).toFixed(2)}</span>
-              </div>
-              
-              <div className="flex justify-between">
-                <span className="text-gray-600">Payment Method</span>
-                <span>Credit Card</span>
+                <span className="text-gray-600">Payment Status</span>
+                <span className="text-green-600 font-medium">Paid</span>
               </div>
             </div>
             
             <div className="pt-4 border-t border-gray-200">
               <h3 className="font-medium mb-2">Estimated Delivery</h3>
-              <div className="flex items-center gap-2 text-green-600">
-                <Package className="h-4 w-4" />
-                <span>{new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString()} - {new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString()}</span>
+              <div className="flex items-center gap-2">
+                <Truck className="h-4 w-4 text-green-600" />
+                <span>
+                  {estimatedDeliveryStart.toLocaleDateString()} - {estimatedDeliveryEnd.toLocaleDateString()}
+                </span>
               </div>
+              <p className="text-sm text-gray-500 mt-2">
+                You will receive shipping updates via email.
+              </p>
             </div>
           </div>
           
-          <div className="space-x-4">
-            <Button asChild>
+          <div className="space-y-4">
+            <Button asChild size="lg">
               <Link to="/account">View Order History</Link>
             </Button>
             
-            <Button variant="outline" asChild>
-              <Link to="/products">
-                <ShoppingBag className="mr-2 h-4 w-4" />
-                Continue Shopping
-              </Link>
-            </Button>
+            <div>
+              <Button variant="outline" asChild>
+                <Link to="/products">
+                  <ShoppingBag className="mr-2 h-4 w-4" />
+                  Continue Shopping
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
