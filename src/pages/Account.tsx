@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -13,37 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ChevronRight, Package, MapPin, User, LogOut, Plus, Clock, X } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-
-interface Address {
-  id: string;
-  user_id: string;
-  address_line1: string;
-  address_line2?: string;
-  city: string;
-  state: string;
-  postal_code: string;
-  country: string;
-  is_default: boolean;
-  created_at: string;
-}
-
-interface OrderItem {
-  id: number;
-  product_id: number;
-  product_name: string;
-  product_price: number;
-  quantity: number;
-}
-
-interface Order {
-  id: number;
-  created_at: string;
-  status: string;
-  total: number;
-  shipping_method: string;
-  shipping_address: any;
-  items?: OrderItem[];
-}
+import { Address, Order, OrderItem } from '@/types/supabase-custom';
 
 const Account = () => {
   const { user, signOut } = useAuth();
@@ -80,15 +49,15 @@ const Account = () => {
     try {
       setIsLoading(true);
       
+      // Using a custom typed query for user_addresses
       const { data, error } = await supabase
         .from('user_addresses')
         .select('*')
-        .eq('user_id', user.id)
-        .order('is_default', { ascending: false });
+        .eq('user_id', user.id);
       
       if (error) throw error;
       
-      setAddresses(data || []);
+      setAddresses(data as Address[] || []);
     } catch (error: any) {
       console.error('Error fetching addresses:', error.message);
       toast({
@@ -107,7 +76,7 @@ const Account = () => {
     try {
       setIsLoading(true);
       
-      // Fetch orders
+      // Fetch orders with custom typing
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select('*')
@@ -128,12 +97,12 @@ const Account = () => {
           
           return {
             ...order,
-            items: itemsData || []
+            items: itemsData as OrderItem[] || []
           };
         })
       );
       
-      setOrders(ordersWithItems);
+      setOrders(ordersWithItems as Order[]);
     } catch (error: any) {
       console.error('Error fetching orders:', error.message);
       toast({
