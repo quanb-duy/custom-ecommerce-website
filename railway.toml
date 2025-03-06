@@ -1,8 +1,0 @@
-[build]
-builder = "DOCKERFILE"
-watchPatterns = ["*.js", "*.ts", "*.tsx", "*.jsx"]
-
-[deploy]
-healthcheckPath = "/"
-healthcheckTimeout = 100
-restartPolicyMaxRetries = 10 
