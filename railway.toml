@@ -1,11 +1,8 @@
 [build]
-builder = "nixpacks"
-buildCommand = "npm install && npm run build"
+builder = "DOCKERFILE"
+watchPatterns = ["*.js", "*.ts", "*.tsx", "*.jsx"]
 
 [deploy]
-startCommand = "node start.js"
 healthcheckPath = "/"
 healthcheckTimeout = 100
-
-[phases.setup]
-nixPkgs = ["nodejs", "npm"] 
+restartPolicyMaxRetries = 10 
