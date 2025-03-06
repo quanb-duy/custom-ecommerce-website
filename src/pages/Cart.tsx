@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -7,12 +6,15 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ShoppingBag, Trash2, Minus, Plus, AlertCircle } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 const Cart = () => {
   const { cartItems, isLoading, updateQuantity, removeFromCart, subtotal, totalItems } = useCart();
   const { user } = useAuth();
   const [editingQuantity, setEditingQuantity] = useState<{[key: number]: boolean}>({});
   const [tempQuantity, setTempQuantity] = useState<{[key: number]: string}>({});
+  const { toast } = useToast();
+  const [imgErrors, setImgErrors] = useState<{[key: number]: boolean}>({});
   
   const startEditingQuantity = (itemId: number, currentQuantity: number) => {
     setEditingQuantity({...editingQuantity, [itemId]: true});
@@ -42,6 +44,15 @@ const Cart = () => {
       updateQuantity(itemId, validQuantity);
       setEditingQuantity({...editingQuantity, [itemId]: false});
     }
+  };
+  
+  const handleImageError = (itemId: number) => {
+    setImgErrors({...imgErrors, [itemId]: true});
+    toast({
+      title: "Image failed to load",
+      description: "We couldn't load one of your product images. We're showing a placeholder instead.",
+      variant: "destructive"
+    });
   };
   
   if (isLoading) {
@@ -116,9 +127,10 @@ const Cart = () => {
                     <div className="flex-shrink-0">
                       <Link to={`/products/${item.product_id}`}>
                         <img 
-                          src={item.product.image} 
+                          src={imgErrors[item.id] ? '/placeholder.svg' : item.product.image} 
                           alt={item.product.name} 
                           className="w-20 h-20 object-cover rounded-md"
+                          onError={() => handleImageError(item.id)}
                         />
                       </Link>
                     </div>

@@ -20,6 +20,7 @@ const Navigation: React.FC = () => {
     { name: 'Products', path: '/products' },
     { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' },
+    { name: 'FAQ', path: '/faq' },
   ];
 
   // Handle scroll effect

@@ -1,11 +1,10 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ShoppingCart, Heart } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ShoppingCart } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
-import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface Product {
@@ -15,114 +14,99 @@ interface Product {
   price: number;
   image: string;
   category: string;
+  stock: number;
 }
 
 interface ProductCardProps {
   product: Product;
 }
 
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { 
-    opacity: 1, 
-    y: 0,
-    transition: {
-      type: "spring",
-      stiffness: 260,
-      damping: 20
-    }
-  }
-};
-
 const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const { addToCart } = useCart();
-  const { user } = useAuth();
+  const { addToCart, isLoading, cartItems } = useCart();
   const { toast } = useToast();
+  const [imageError, setImageError] = useState(false);
   
-  const handleAddToCart = (e: React.MouseEvent) => {
+  const isInCart = cartItems.some(item => item.product_id === product.id);
+  const isOutOfStock = product.stock === 0;
+  
+  const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     
-    if (!user) {
+    if (isOutOfStock) {
       toast({
-        title: "Please sign in",
-        description: "You need to be signed in to add items to your cart",
-        variant: "destructive",
+        title: "Out of Stock",
+        description: "This product is currently unavailable.",
+        variant: "destructive"
       });
       return;
     }
     
-    addToCart(product.id, 1);
+    try {
+      await addToCart(product.id, 1);
+      toast({
+        title: "Added to cart",
+        description: `${product.name} has been added to your cart.`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Could not add item to cart. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
   
+  const handleImageError = () => {
+    setImageError(true);
+  };
+
   return (
-    <motion.div 
-      variants={item}
-      className="group relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Category tag */}
-      <div className="absolute top-4 left-4 z-10">
-        <span className="inline-block bg-white/80 backdrop-blur-sm px-3 py-1 text-xs font-medium rounded-full">
-          {product.category}
-        </span>
-      </div>
-      
-      {/* Wishlist button */}
-      <button 
-        className="absolute top-4 right-4 z-10 bg-white/80 backdrop-blur-sm p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        aria-label="Add to wishlist"
-      >
-        <Heart className="h-4 w-4" />
-      </button>
-      
-      {/* Image container */}
-      <Link to={`/products/${product.id}`} className="block relative aspect-square overflow-hidden rounded-xl mb-4 bg-gray-100">
-        <div className={`absolute inset-0 flex items-center justify-center ${!isImageLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}>
-          <div className="w-8 h-8 border-2 border-black/10 border-t-black/40 rounded-full animate-spin"></div>
+    <Link to={`/products/${product.id}`} className="group">
+      <div className="overflow-hidden rounded-lg bg-white shadow-sm transition-shadow hover:shadow-md">
+        <div className="relative pb-[100%]">
+          <img
+            src={imageError ? '/placeholder.svg' : product.image}
+            alt={product.name}
+            onError={handleImageError}
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+          {isOutOfStock && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+              <span className="rounded-full bg-white px-3 py-1 text-sm font-medium text-black">
+                Out of Stock
+              </span>
+            </div>
+          )}
         </div>
-        <img 
-          src={product.image} 
-          alt={product.name}
-          className={`w-full h-full object-cover transition-transform duration-700 ease-out ${isHovered ? 'scale-105' : 'scale-100'} ${isImageLoaded ? 'opacity-100' : 'opacity-0'}`}
-          onLoad={() => setIsImageLoaded(true)}
-        />
         
-        {/* Quick add overlay */}
-        <div className={`absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/60 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`}>
-          <Button 
-            variant="secondary" 
-            size="sm" 
-            className="w-full gap-2 hover:bg-white"
-            onClick={handleAddToCart}
-          >
-            <ShoppingCart className="h-4 w-4" />
-            Quick Add
-          </Button>
-        </div>
-      </Link>
-      
-      {/* Product info */}
-      <div className="space-y-2">
-        <Link to={`/products/${product.id}`} className="block">
-          <h3 className="font-medium text-lg tracking-tight hover:underline">
-            {product.name}
-          </h3>
-        </Link>
-        <p className="text-gray-600 text-sm line-clamp-2">
-          {product.description}
-        </p>
-        <div className="flex items-center justify-between">
-          <p className="font-medium">
-            ${product.price?.toFixed(2)}
+        <div className="p-4">
+          <div className="mb-2 flex items-start justify-between">
+            <h3 className="text-lg font-medium line-clamp-1">{product.name}</h3>
+            <Badge variant="outline" className="ml-2 shrink-0">
+              {product.category}
+            </Badge>
+          </div>
+          
+          <p className="mb-4 text-sm text-gray-600 line-clamp-2">
+            {product.description}
           </p>
-          <div className="text-xs text-gray-500">Free shipping</div>
+          
+          <div className="flex items-center justify-between">
+            <span className="text-lg font-medium">${product.price.toFixed(2)}</span>
+            <Button
+              size="sm"
+              variant={isInCart ? "secondary" : "default"}
+              className="ml-2"
+              onClick={handleAddToCart}
+              disabled={isLoading || isOutOfStock}
+            >
+              <ShoppingCart className="mr-1 h-4 w-4" />
+              {isInCart ? "In Cart" : "Add"}
+            </Button>
+          </div>
         </div>
       </div>
-    </motion.div>
+    </Link>
   );
 };
 
