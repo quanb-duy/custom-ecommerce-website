@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
+    const STRIPE_SECRET_KEY = Deno.env.get('VITE_STRIPE_SECRET_KEY')
     if (!STRIPE_SECRET_KEY) {
       throw new Error('STRIPE_SECRET_KEY is not set in environment variables')
     }
