@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
@@ -11,10 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
 // Initialize Stripe with the publishable key
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-const stripePromise = stripeKey 
-  ? loadStripe(stripeKey) 
-  : Promise.resolve(null);
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 interface PaymentFormProps {
   amount: number;
@@ -29,33 +27,6 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const [stripeInitialized, setStripeInitialized] = useState(true);
-  
-  useEffect(() => {
-    // Check if Stripe is initialized
-    if (!stripe) {
-      setStripeInitialized(false);
-    } else {
-      setStripeInitialized(true);
-    }
-  }, [stripe]);
-
-  // If Stripe isn't initialized and we've confirmed it's not just loading
-  if (!stripeInitialized && !loading) {
-    return (
-      <div className="p-4 border rounded-md bg-white text-center">
-        <p className="text-red-500">Payment system currently unavailable</p>
-        <Button 
-          type="button" 
-          className="mt-2"
-          variant="outline"
-          onClick={() => onPaymentError("Payment system unavailable")}
-        >
-          Try another payment method
-        </Button>
-      </div>
-    );
-  }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

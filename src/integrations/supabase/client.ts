@@ -8,42 +8,4 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-let supabaseClient: ReturnType<typeof createClient<Database>> | null = null;
-
-try {
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    console.error('Supabase URL or key is missing');
-    throw new Error('Supabase configuration missing');
-  }
-  
-  supabaseClient = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-  console.log('Supabase client initialized successfully');
-} catch (error) {
-  console.error('Failed to initialize Supabase client:', error);
-  // Create a mock client that logs errors instead of throwing exceptions
-  // This allows the app to at least load and display a useful error message
-  supabaseClient = new Proxy({} as ReturnType<typeof createClient<Database>>, {
-    get: (_target, prop) => {
-      if (prop === 'functions') {
-        return {
-          invoke: async () => {
-            console.error('Supabase client not initialized properly');
-            return { data: null, error: { message: 'Database connection unavailable' } };
-          }
-        };
-      }
-      
-      return () => {
-        console.error(`Attempted to call ${String(prop)} on uninitialized Supabase client`);
-        return { data: null, error: { message: 'Database connection unavailable' } };
-      };
-    }
-  });
-}
-
-export const supabase = supabaseClient!;
-
-// Helper function to check if supabase is properly initialized
-export const isSupabaseInitialized = () => {
-  return supabaseClient !== null && !(supabaseClient instanceof Proxy);
-};
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
