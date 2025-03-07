@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 
+// Use interface that works with the existing types
 export interface CartItem {
   id: number;
   product_id: number;
@@ -16,7 +17,6 @@ export interface CartItem {
     image: string;
     description: string;
     category: string;
-    stock: number;
   };
 }
 
@@ -40,16 +40,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { toast } = useToast();
   const navigate = useNavigate();
   
+  // Calculate cart total
   const cartTotal = cartItems.reduce((total, item) => {
     return total + (item.product.price * item.quantity);
   }, 0);
 
+  // Calculate subtotal (same as cartTotal for now, but could be different if we add discounts)
   const subtotal = cartTotal;
 
+  // Calculate total items
   const totalItems = cartItems.reduce((total, item) => {
     return total + item.quantity;
   }, 0);
 
+  // Fetch cart items when user changes
   useEffect(() => {
     if (user) {
       fetchCartItems();
@@ -84,23 +88,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const getProductStock = async (productId: number): Promise<number> => {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('stock')
-        .eq('id', productId)
-        .single();
-      
-      if (error) throw error;
-      
-      return data.stock || 0;
-    } catch (error) {
-      console.error('Error fetching product stock:', error);
-      return 0;
-    }
-  };
-
   const addToCart = async (productId: number, quantity: number = 1) => {
     if (!user) {
       toast({
@@ -115,33 +102,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       
-      const currentStock = await getProductStock(productId);
-      
+      // Check if item already exists in cart
       const existingItem = cartItems.find(item => item.product_id === productId);
       
       if (existingItem) {
+        // Update quantity of existing item
         const newQuantity = existingItem.quantity + quantity;
-        
-        if (newQuantity > currentStock) {
-          toast({
-            title: "Stock limit reached",
-            description: `Sorry, only ${currentStock} items available in stock`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
         await updateQuantity(existingItem.id, newQuantity);
       } else {
-        if (quantity > currentStock) {
-          toast({
-            title: "Stock limit reached",
-            description: `Sorry, only ${currentStock} items available in stock`,
-            variant: "destructive",
-          });
-          return;
-        }
-        
+        // Add new item to cart
         const { error } = await supabase
           .from('cart_items')
           .insert([
@@ -154,7 +123,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         if (error) throw error;
         
-        await fetchCartItems();
+        await fetchCartItems(); // Refresh cart after adding item
       }
       
       toast({
@@ -184,6 +153,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (error) throw error;
       
+      // Update local state
       setCartItems(cartItems.filter(item => item.id !== cartItemId));
       
       toast({
@@ -207,24 +177,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       
       if (quantity <= 0) {
+        // If quantity is zero or negative, remove the item
         await removeFromCart(cartItemId);
         return;
-      }
-      
-      const itemToUpdate = cartItems.find(item => item.id === cartItemId);
-      if (!itemToUpdate) {
-        throw new Error('Cart item not found');
-      }
-      
-      const currentStock = await getProductStock(itemToUpdate.product_id);
-      
-      if (quantity > currentStock) {
-        toast({
-          title: "Stock limit reached",
-          description: `Sorry, only ${currentStock} items available in stock`,
-          variant: "destructive",
-        });
-        quantity = currentStock;
       }
       
       const { error } = await supabase
@@ -234,17 +189,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (error) throw error;
       
+      // Update local state
       setCartItems(cartItems.map(item => 
         item.id === cartItemId ? { ...item, quantity } : item
       ));
-      
-      if (quantity === currentStock) {
-        toast({
-          title: "Maximum stock reached",
-          description: `Quantity updated to maximum available (${currentStock})`,
-          variant: "destructive",
-        });
-      }
     } catch (error: any) {
       console.error('Error updating quantity:', error.message);
       toast({

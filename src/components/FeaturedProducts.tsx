@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
@@ -14,7 +15,6 @@ interface Product {
   price: number;
   image: string;
   category: string;
-  stock: number;
 }
 
 // Fetch featured products from Supabase
@@ -39,8 +39,7 @@ const fallbackProducts = [
     description: 'Premium office chair with adjustable features',
     price: 299.99,
     image: 'https://images.unsplash.com/photo-1580480055273-228ff5388ef8?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80',
-    category: 'Furniture',
-    stock: 10
+    category: 'Furniture'
   },
   {
     id: 2,
@@ -48,8 +47,7 @@ const fallbackProducts = [
     description: 'Sleek desk lamp with adjustable brightness',
     price: 89.99,
     image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80',
-    category: 'Lighting',
-    stock: 15
+    category: 'Lighting'
   },
   {
     id: 3,
@@ -57,8 +55,7 @@ const fallbackProducts = [
     description: 'Simple and elegant wall clock',
     price: 49.99,
     image: 'https://images.unsplash.com/photo-1563861826100-9cb868fdbe1c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80',
-    category: 'Decor',
-    stock: 8
+    category: 'Decor'
   },
   {
     id: 4,
@@ -66,8 +63,7 @@ const fallbackProducts = [
     description: 'Handcrafted ceramic vase',
     price: 79.99,
     image: 'https://images.unsplash.com/photo-1612196808214-b7e7e3986c0c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80',
-    category: 'Decor',
-    stock: 12
+    category: 'Decor'
   }
 ];
 

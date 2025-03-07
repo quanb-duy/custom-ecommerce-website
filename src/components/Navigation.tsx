@@ -4,15 +4,11 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, ShoppingCart, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCart } from '@/contexts/CartContext';
-import { useAuth } from '@/contexts/AuthContext';
 
 const Navigation: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
-  const { totalItems } = useCart();
-  const { user } = useAuth();
 
   // Navigation links
   const navLinks = [
@@ -20,7 +16,6 @@ const Navigation: React.FC = () => {
     { name: 'Products', path: '/products' },
     { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' },
-    { name: 'FAQ', path: '/faq' },
   ];
 
   // Handle scroll effect
@@ -88,17 +83,15 @@ const Navigation: React.FC = () => {
           <div className="flex items-center space-x-4">
             <Link to="/cart" className="relative p-1">
               <ShoppingCart className="h-5 w-5" />
-              {totalItems > 0 && (
-                <span className="absolute -top-1 -right-1 bg-black text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                  {totalItems}
-                </span>
-              )}
+              <span className="absolute -top-1 -right-1 bg-black text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                0
+              </span>
             </Link>
             
-            <Link to={user ? "/account" : "/auth"} className="hidden md:block">
+            <Link to="/auth" className="hidden md:block">
               <Button variant="outline" size="sm" className="gap-2">
                 <User className="h-4 w-4" />
-                <span>{user ? "My Account" : "Account"}</span>
+                <span>Account</span>
               </Button>
             </Link>
 
@@ -143,11 +136,8 @@ const Navigation: React.FC = () => {
                     {link.name}
                   </Link>
                 ))}
-                <Link 
-                  to={user ? "/account" : "/auth"} 
-                  className="p-2 text-lg text-gray-600"
-                >
-                  {user ? "My Account" : "Account"}
+                <Link to="/auth" className="p-2 text-lg text-gray-600">
+                  Account
                 </Link>
               </nav>
             </div>
