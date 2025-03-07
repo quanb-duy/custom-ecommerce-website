@@ -1,9 +1,9 @@
-
 import React from 'react';
 import Navigation from './Navigation';
 import Footer from './Footer';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
+import ServiceStatusCheck from './ServiceStatusCheck';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,6 +16,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div className="flex flex-col min-h-screen">
       <Navigation />
       <main className="flex-grow">
+        <div className="container mx-auto px-4 py-2">
+          <ServiceStatusCheck />
+        </div>
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}

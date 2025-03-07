@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -31,6 +30,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   const [loading, setLoading] = useState(false);
   const [widgetLoaded, setWidgetLoaded] = useState(false);
   const [pickupPoints, setPickupPoints] = useState<PacketaPoint[]>([]);
+  const [scriptError, setScriptError] = useState(false);
   const { toast } = useToast();
   const widgetRef = useRef<any>(null);
 
@@ -43,10 +43,17 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
       script.async = true;
       script.onload = () => {
         setWidgetLoaded(true);
+        setScriptError(false);
+      };
+      script.onerror = () => {
+        console.error('Failed to load Packeta widget script');
+        setScriptError(true);
+        setWidgetLoaded(false);
       };
       document.body.appendChild(script);
     } else if (window.Packeta) {
       setWidgetLoaded(true);
+      setScriptError(false);
     }
   }, []);
 
@@ -82,37 +89,69 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   const openPacketaWidget = () => {
     if (widgetLoaded && window.Packeta) {
       if (!widgetRef.current) {
-        widgetRef.current = new window.Packeta.Widget({
-          appIdentity: 'EcommerceShop',
-          language: 'en',
-          country: 'US', // Change according to your default country
-          defaultExpanded: true,
-          // In production, we would use real API credentials
-          apiKey: 'test-key', // This would be replaced with the real key at runtime
-          showInfo: true,
-          callback: (point: any) => {
-            // Process the selected pickup point
-            const selectedPoint: PacketaPoint = {
-              id: point.id,
-              name: point.name,
-              address: point.street,
-              zip: point.zip,
-              city: point.city
-            };
-            onSelect(selectedPoint);
-            toast({
-              title: 'Pickup Point Selected',
-              description: `${selectedPoint.name}, ${selectedPoint.address}`,
-            });
-          }
-        });
+        try {
+          const apiKey = import.meta.env.VITE_PACKETA_API_KEY || 'test-key';
+          widgetRef.current = new window.Packeta.Widget({
+            appIdentity: 'EcommerceShop',
+            language: 'en_GB',
+            country: 'CZ', // Using Czech Republic based on your locale settings
+            defaultExpanded: true,
+            apiKey: apiKey,
+            showInfo: true,
+            callback: (point: any) => {
+              if (!point) {
+                console.error('Invalid point data returned from Packeta widget');
+                toast({
+                  title: 'Error',
+                  description: 'Failed to select pickup point',
+                  variant: 'destructive',
+                });
+                return;
+              }
+              
+              // Process the selected pickup point
+              const selectedPoint: PacketaPoint = {
+                id: point.id,
+                name: point.name,
+                address: point.street,
+                zip: point.zip,
+                city: point.city
+              };
+              onSelect(selectedPoint);
+              toast({
+                title: 'Pickup Point Selected',
+                description: `${selectedPoint.name}, ${selectedPoint.address}`,
+              });
+            }
+          });
+        } catch (error) {
+          console.error('Failed to initialize Packeta widget:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to initialize pickup points widget',
+            variant: 'destructive',
+          });
+          setWidgetLoaded(false);
+          return;
+        }
       }
       
-      widgetRef.current.open();
+      try {
+        widgetRef.current.open();
+      } catch (error) {
+        console.error('Failed to open Packeta widget:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to open pickup points widget',
+          variant: 'destructive',
+        });
+      }
     } else {
       toast({
         title: 'Widget not ready',
-        description: 'Please wait while we load the pickup points widget.',
+        description: scriptError ? 
+          'Failed to load pickup points widget. Please try again later.' : 
+          'Please wait while we load the pickup points widget.',
         variant: 'destructive',
       });
     }
