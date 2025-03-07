@@ -1,15 +1,59 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ShoppingBag, Trash2, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Trash2, Minus, Plus, AlertCircle } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 const Cart = () => {
   const { cartItems, isLoading, updateQuantity, removeFromCart, subtotal, totalItems } = useCart();
   const { user } = useAuth();
+  const [editingQuantity, setEditingQuantity] = useState<{[key: number]: boolean}>({});
+  const [tempQuantity, setTempQuantity] = useState<{[key: number]: string}>({});
+  const { toast } = useToast();
+  const [imgErrors, setImgErrors] = useState<{[key: number]: boolean}>({});
+  
+  const startEditingQuantity = (itemId: number, currentQuantity: number) => {
+    setEditingQuantity({...editingQuantity, [itemId]: true});
+    setTempQuantity({...tempQuantity, [itemId]: currentQuantity.toString()});
+  };
+  
+  const handleQuantityInputChange = (itemId: number, value: string) => {
+    // Only allow numeric input
+    if (/^\d*$/.test(value)) {
+      setTempQuantity({...tempQuantity, [itemId]: value});
+    }
+  };
+  
+  const handleQuantityInputBlur = (itemId: number, maxStock: number) => {
+    const newQuantity = parseInt(tempQuantity[itemId]) || 1;
+    const validQuantity = Math.min(Math.max(1, newQuantity), maxStock);
+    
+    updateQuantity(itemId, validQuantity);
+    setEditingQuantity({...editingQuantity, [itemId]: false});
+  };
+  
+  const handleQuantityInputKeyDown = (e: React.KeyboardEvent, itemId: number, maxStock: number) => {
+    if (e.key === 'Enter') {
+      const newQuantity = parseInt(tempQuantity[itemId]) || 1;
+      const validQuantity = Math.min(Math.max(1, newQuantity), maxStock);
+      
+      updateQuantity(itemId, validQuantity);
+      setEditingQuantity({...editingQuantity, [itemId]: false});
+    }
+  };
+  
+  const handleImageError = (itemId: number) => {
+    setImgErrors({...imgErrors, [itemId]: true});
+    toast({
+      title: "Image failed to load",
+      description: "We couldn't load one of your product images. We're showing a placeholder instead.",
+      variant: "destructive"
+    });
+  };
   
   if (isLoading) {
     return (
@@ -83,9 +127,10 @@ const Cart = () => {
                     <div className="flex-shrink-0">
                       <Link to={`/products/${item.product_id}`}>
                         <img 
-                          src={item.product.image} 
+                          src={imgErrors[item.id] ? '/placeholder.svg' : item.product.image} 
                           alt={item.product.name} 
                           className="w-20 h-20 object-cover rounded-md"
+                          onError={() => handleImageError(item.id)}
                         />
                       </Link>
                     </div>
@@ -95,6 +140,14 @@ const Cart = () => {
                         <h3 className="font-medium text-lg hover:underline">{item.product.name}</h3>
                       </Link>
                       <p className="text-gray-500 text-sm mb-2">{item.product.category}</p>
+                      
+                      {item.product.stock <= 5 && (
+                        <p className="text-amber-600 text-xs mb-2 flex items-center">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Only {item.product.stock} left in stock
+                        </p>
+                      )}
+                      
                       <div className="flex justify-between items-center">
                         <div className="flex items-center mt-2">
                           <button 
@@ -104,10 +157,29 @@ const Cart = () => {
                           >
                             <Minus className="h-4 w-4" />
                           </button>
-                          <span className="mx-2 w-8 text-center">{item.quantity}</span>
+                          
+                          {editingQuantity[item.id] ? (
+                            <Input
+                              value={tempQuantity[item.id]}
+                              onChange={(e) => handleQuantityInputChange(item.id, e.target.value)}
+                              onBlur={() => handleQuantityInputBlur(item.id, item.product.stock)}
+                              onKeyDown={(e) => handleQuantityInputKeyDown(e, item.id, item.product.stock)}
+                              className="mx-1 w-14 text-center h-8 px-2"
+                              autoFocus
+                            />
+                          ) : (
+                            <span 
+                              className="mx-2 w-8 text-center cursor-pointer hover:underline"
+                              onClick={() => startEditingQuantity(item.id, item.quantity)}
+                            >
+                              {item.quantity}
+                            </span>
+                          )}
+                          
                           <button 
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
                             className="p-1 rounded-full hover:bg-gray-100"
+                            disabled={item.quantity >= item.product.stock}
                             aria-label="Increase quantity"
                           >
                             <Plus className="h-4 w-4" />

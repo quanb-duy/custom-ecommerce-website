@@ -5,12 +5,14 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, ChevronLeft, Plus, Minus } from 'lucide-react';
+import { ShoppingCart, ChevronLeft, Plus, Minus, AlertCircle } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Json } from '@/integrations/supabase/types';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
 
 // Using a type that's compatible with our database schema
 interface Product {
@@ -51,6 +53,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const [quantity, setQuantity] = useState(1);
   const { addToCart, isLoading: isCartLoading } = useCart();
+  const { toast } = useToast();
   
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['product', id],
@@ -70,6 +73,9 @@ const ProductDetail = () => {
       await addToCart(product.id, quantity);
     }
   };
+
+  const isLowStock = product && product.stock <= 5 && product.stock > 0;
+  const isOutOfStock = product && product.stock === 0;
 
   if (isLoading) {
     return (
@@ -136,13 +142,31 @@ const ProductDetail = () => {
             
             <p className="text-gray-600 mb-6">{product.description}</p>
             
+            {isOutOfStock ? (
+              <Alert variant="destructive" className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Out of Stock</AlertTitle>
+                <AlertDescription>
+                  This product is currently out of stock. Please check back later.
+                </AlertDescription>
+              </Alert>
+            ) : isLowStock ? (
+              <Alert variant="destructive" className="mb-6 bg-amber-50 text-amber-800 border-amber-200">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Low Stock</AlertTitle>
+                <AlertDescription>
+                  Only {product.stock} items left in stock. Order soon!
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            
             <div className="flex items-center space-x-4 mb-6">
               <div className="flex items-center border rounded-md">
                 <Button 
                   variant="ghost" 
                   size="icon" 
                   onClick={() => handleQuantityChange(-1)}
-                  disabled={quantity <= 1 || isCartLoading}
+                  disabled={quantity <= 1 || isCartLoading || isOutOfStock}
                 >
                   <Minus className="h-4 w-4" />
                 </Button>
@@ -151,7 +175,7 @@ const ProductDetail = () => {
                   variant="ghost" 
                   size="icon" 
                   onClick={() => handleQuantityChange(1)}
-                  disabled={quantity >= (product.stock || 10) || isCartLoading}
+                  disabled={quantity >= product.stock || isCartLoading || isOutOfStock}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -160,7 +184,7 @@ const ProductDetail = () => {
               <Button 
                 className="flex-1" 
                 onClick={handleAddToCart}
-                disabled={isCartLoading}
+                disabled={isCartLoading || isOutOfStock}
               >
                 <ShoppingCart className="mr-2 h-4 w-4" />
                 {isCartLoading ? 'Adding...' : 'Add to Cart'}
@@ -171,7 +195,9 @@ const ProductDetail = () => {
               <p className="text-sm">
                 <span className="font-medium">Availability: </span>
                 {product.stock > 0 ? (
-                  <span className="text-green-600">In Stock ({product.stock} available)</span>
+                  <span className={product.stock <= 5 ? "text-orange-600" : "text-green-600"}>
+                    {product.stock <= 5 ? `Low Stock (${product.stock} left)` : `In Stock (${product.stock} available)`}
+                  </span>
                 ) : (
                   <span className="text-red-600">Out of Stock</span>
                 )}

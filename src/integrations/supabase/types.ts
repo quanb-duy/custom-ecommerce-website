@@ -41,6 +41,81 @@ export type Database = {
           },
         ]
       }
+      order_items: {
+        Row: {
+          id: number
+          order_id: number
+          product_id: number
+          product_name: string
+          product_price: number
+          quantity: number
+        }
+        Insert: {
+          id?: number
+          order_id: number
+          product_id: number
+          product_name: string
+          product_price: number
+          quantity?: number
+        }
+        Update: {
+          id?: number
+          order_id?: number
+          product_id?: number
+          product_name?: string
+          product_price?: number
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          created_at: string
+          id: number
+          payment_intent_id: string | null
+          shipping_address: Json
+          shipping_method: string
+          status: string
+          total: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          payment_intent_id?: string | null
+          shipping_address: Json
+          shipping_method: string
+          status?: string
+          total?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          payment_intent_id?: string | null
+          shipping_address?: Json
+          shipping_method?: string
+          status?: string
+          total?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           category: string
@@ -104,6 +179,45 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+        }
+        Relationships: []
+      }
+      user_addresses: {
+        Row: {
+          address_line1: string
+          address_line2: string | null
+          city: string
+          country: string
+          created_at: string
+          id: string
+          is_default: boolean
+          postal_code: string
+          state: string
+          user_id: string
+        }
+        Insert: {
+          address_line1: string
+          address_line2?: string | null
+          city: string
+          country: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          postal_code: string
+          state: string
+          user_id: string
+        }
+        Update: {
+          address_line1?: string
+          address_line2?: string | null
+          city?: string
+          country?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          postal_code?: string
+          state?: string
+          user_id?: string
         }
         Relationships: []
       }
