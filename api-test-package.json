@@ -1,0 +1,13 @@
+{
+  "name": "api-test",
+  "version": "1.0.0",
+  "description": "Test script for API key validation",
+  "main": "api-test.js",
+  "scripts": {
+    "test": "node api-test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "stripe": "^14.25.0"
+  }
+} 
