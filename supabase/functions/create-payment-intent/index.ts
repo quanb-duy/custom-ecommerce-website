@@ -15,9 +15,10 @@ serve(async (req) => {
   }
 
   try {
-    const STRIPE_SECRET_KEY = Deno.env.get('VITE_STRIPE_SECRET_KEY')
+    // Get API key from Supabase secrets (not environment variables)
+    const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
     if (!STRIPE_SECRET_KEY) {
-      console.error('STRIPE_SECRET_KEY is not set in environment variables')
+      console.error('STRIPE_SECRET_KEY is not set in Supabase secrets')
       return new Response(
         JSON.stringify({ 
           error: 'Payment service is temporarily unavailable', 

@@ -10,17 +10,8 @@ const PORT = process.env.PORT || 8080;
 console.log('Starting server with environment configuration:');
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`PORT: ${PORT}`);
-
-// Log all environment variables in development mode
-if (process.env.NODE_ENV !== 'production') {
-  console.log('Environment Variables:');
-  Object.keys(process.env).forEach(key => {
-    // Only log variables that could be relevant to our app
-    if (key.startsWith('VITE_') || key === 'PORT' || key.startsWith('SUPABASE_')) {
-      console.log(`${key}: ${key.includes('KEY') ? '[MASKED]' : process.env[key]}`);
-    }
-  });
-}
+console.log(`SUPABASE_SERVICE_ROLE_KEY exists: ${Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)}`);
+console.log(`SUPABASE_ANON_PUBLIC_KEY exists: ${Boolean(process.env.SUPABASE_ANON_PUBLIC_KEY)}`);
 
 // Check if necessary environment variables are set
 const requiredEnvVars = [
@@ -45,12 +36,41 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
+// Debug route to check environment variables (non-sensitive info)
+app.get('/debug-env', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).send('Debug info not available in production');
+  }
+  
+  const safeEnvInfo = {
+    nodeEnv: process.env.NODE_ENV,
+    port: PORT,
+    hasSupabaseServiceKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    hasSupabaseAnonKey: Boolean(process.env.SUPABASE_ANON_PUBLIC_KEY),
+    hasStripePublishableKey: Boolean(process.env.VITE_STRIPE_PUBLISHABLE_KEY),
+    hasPacketaApiKey: Boolean(process.env.VITE_PACKETA_API_KEY)
+  };
+  
+  res.json(safeEnvInfo);
+});
+
 // Handle all routes by serving the index.html file for client-side routing
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// Start the server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on http://0.0.0.0:${PORT}`);
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).send('Something broke on the server!');
 });
+
+// Start the server with improved error handling
+try {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on http://0.0.0.0:${PORT}`);
+  });
+} catch (error) {
+  console.error('Failed to start server:', error);
+  process.exit(1);
+}

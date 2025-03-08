@@ -14,11 +14,11 @@ serve(async (req) => {
   }
 
   try {
-    const PACKETA_API_KEY = Deno.env.get('VITE_PACKETA_API_KEY')
-    const PACKETA_API_PASSWORD = Deno.env.get('VITE_PACKETA_API_PASSWORD')
+    const PACKETA_API_KEY = Deno.env.get('PACKETA_API_KEY')
+    const PACKETA_API_PASSWORD = Deno.env.get('PACKETA_API_PASSWORD')
     
     if (!PACKETA_API_KEY || !PACKETA_API_PASSWORD) {
-      console.error('Packeta API credentials not found in environment variables')
+      console.error('Packeta API credentials not found in Supabase secrets')
       
       // Return fallback data instead of failing
       const fallbackPickupPoints = [

@@ -19,7 +19,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     
     if (!supabaseServiceKey) {
-      console.error('SUPABASE_SERVICE_ROLE_KEY is required but not set in environment variables')
+      console.error('SUPABASE_SERVICE_ROLE_KEY is required but not set in Supabase secrets')
       return new Response(
         JSON.stringify({ 
           error: 'Service temporarily unavailable', 
