@@ -12,25 +12,28 @@ export function useSupabaseFunctions() {
 
   const invokeFunction = async <T = any>(
     functionName: string, 
-    method: 'GET' | 'POST', 
+    method: 'GET' | 'POST' = 'POST', // Default to POST to match most common API patterns
     options?: FunctionOptions
   ): Promise<{ data: T | null; error: string | null }> => {
     setIsLoading(true);
     setError(null);
     
     try {
-      console.log(`Invoking function ${functionName} with method ${method}`);
+      console.log(`Invoking function ${functionName} with method ${method}`, options?.body);
       
       const { data, error } = await supabase.functions.invoke(functionName, {
         method,
         body: options?.body,
-        headers: options?.headers
+        headers: {
+          ...options?.headers,
+          'Content-Type': 'application/json',
+        }
       });
 
       if (error) {
         console.error(`Error invoking function ${functionName}:`, error);
-        setError(error.message);
-        return { data: null, error: error.message };
+        setError(error.message || 'Unknown error calling function');
+        return { data: null, error: error.message || 'Unknown error calling function' };
       }
 
       return { data, error: null };
@@ -56,6 +59,7 @@ export function useSupabaseFunctions() {
     get,
     post,
     isLoading,
-    error
+    error,
+    clearError: () => setError(null)
   };
 } 
