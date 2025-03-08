@@ -238,6 +238,13 @@ const Checkout = () => {
         quantity: item.quantity
       }));
       
+      console.log('Submitting order with data:', {
+        order_data: orderData,
+        order_items: orderItems,
+        user_id: user.id,
+        payment_intent_id: paymentId
+      });
+      
       const { data, error } = await supabase.functions.invoke('create-order', {
         method: 'POST',
         body: {
@@ -249,6 +256,7 @@ const Checkout = () => {
       });
       
       if (error) {
+        console.error('Error response from create-order:', error);
         throw new Error(`Error creating order: ${error.message}`);
       }
       

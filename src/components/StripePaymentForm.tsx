@@ -45,11 +45,11 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
     setError(null);
 
     try {
-      // Create payment intent on the server
+      // Create payment intent on the server - ensure we're using POST method
       const { data: paymentIntentData, error: paymentIntentError } = await supabase.functions.invoke(
         'create-payment-intent',
         {
-          method: 'POST',
+          method: 'POST', // Ensure POST method is used
           body: { 
             amount: Math.round(amount * 100), // Convert to cents for Stripe
             currency: 'usd'

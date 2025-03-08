@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -19,6 +20,18 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: "This endpoint requires a POST request with order details"
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+
+    if (req.method !== "POST") {
+      return new Response(
+        JSON.stringify({ 
+          error: `This endpoint requires a POST request, received: ${req.method}`
         }), 
         { 
           status: 400, 
@@ -65,7 +78,7 @@ serve(async (req) => {
       }
       
       requestData = JSON.parse(bodyText);
-      console.log('Request data successfully parsed');
+      console.log('Request data successfully parsed:', requestData);
     } catch (parseError) {
       console.error('JSON parsing error:', parseError.message);
       return new Response(
@@ -89,7 +102,10 @@ serve(async (req) => {
 
     if (!order_data || !order_items || !user_id) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }), 
+        JSON.stringify({ 
+          error: 'Missing required fields',
+          received: JSON.stringify(requestData)
+        }), 
         { 
           status: 400, 
           headers: { ...corsHeaders, "Content-Type": "application/json" } 
