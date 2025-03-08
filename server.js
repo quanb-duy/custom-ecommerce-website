@@ -42,12 +42,7 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// 4. Static file serving
-// This must come BEFORE any APIs or custom routes
-const distPath = path.join(__dirname, 'dist');
-app.use(express.static(distPath));
-
-// 5. API routes with JSON parsing
+// 4. API routes with JSON parsing
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
 apiRouter.use(express.json());
@@ -67,14 +62,19 @@ apiRouter.get('/test', (req, res) => {
   res.json({ status: 'API is working' });
 });
 
-// Block direct access to Supabase edge function URLs
+// 5. Block direct access to Supabase edge function URLs
 app.all('/supabase/*', (req, res) => {
   return res.status(403).json({ 
     error: 'Direct access to Supabase functions is not allowed' 
   });
 });
 
-// 6. SPA fallback - serve index.html for all other routes
+// 6. Static file serving
+// This must come BEFORE the SPA fallback route
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+
+// 7. SPA fallback - serve index.html for all other routes
 // This MUST be after all other routes
 app.get('*', (req, res) => {
   console.log('Serving SPA fallback for:', req.originalUrl);
