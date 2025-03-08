@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,28 +20,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+    const getInitialSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
         setUser(session?.user ?? null);
+      } catch (error) {
+        console.error("Error getting initial session:", error);
+        setAuthError("Failed to initialize authentication. Please try again later.");
+        toast({
+          title: "Authentication Error",
+          description: "Failed to initialize authentication. Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
         setIsLoading(false);
       }
-    );
+    };
 
-    return () => subscription.unsubscribe();
-  }, []);
+    getInitialSession();
+
+    // Listen for auth changes
+    try {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        (event, session) => {
+          console.log("Auth state changed:", event);
+          setSession(session);
+          setUser(session?.user ?? null);
+          setIsLoading(false);
+        }
+      );
+
+      return () => subscription.unsubscribe();
+    } catch (error) {
+      console.error("Error setting up auth state change listener:", error);
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  // Display auth error if exists
+  useEffect(() => {
+    if (authError) {
+      toast({
+        title: "Authentication Error",
+        description: authError,
+        variant: "destructive",
+      });
+    }
+  }, [authError, toast]);
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {

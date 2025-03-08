@@ -19,7 +19,17 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     
     if (!supabaseServiceKey) {
-      throw new Error('SUPABASE_SERVICE_ROLE_KEY is required')
+      console.error('SUPABASE_SERVICE_ROLE_KEY is required but not set in Supabase secrets')
+      return new Response(
+        JSON.stringify({ 
+          error: 'Service temporarily unavailable', 
+          details: 'Missing service role key'
+        }), 
+        { 
+          status: 503, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -57,6 +67,7 @@ serve(async (req) => {
       .single()
 
     if (orderError) {
+      console.error('Error creating order:', orderError)
       throw new Error(`Error creating order: ${orderError.message}`)
     }
 
@@ -73,6 +84,7 @@ serve(async (req) => {
       .insert(orderItemsWithOrderId)
 
     if (itemsError) {
+      console.error('Error creating order items:', itemsError)
       throw new Error(`Error creating order items: ${itemsError.message}`)
     }
 
