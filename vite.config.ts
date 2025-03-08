@@ -1,3 +1,4 @@
+
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -34,12 +35,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     // Force Railway environment variables through to the client
-    // Only include client-safe variables with VITE_ prefix here
     define: {
       'import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY': JSON.stringify(env.VITE_STRIPE_PUBLISHABLE_KEY || ''),
-      'import.meta.env.VITE_PACKETA_API_KEY': JSON.stringify(env.VITE_PACKETA_API_KEY || ''),
-      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || 'https://owigcjycsaxmpsthjbrh.supabase.co'),
-      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93aWdjanljc2F4bXBzdGhqYnJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA5MjYwMzksImV4cCI6MjA1NjUwMjAzOX0.KVbzqUDrxqz3rjtoA1G2AVdAgo3DTjdzx_YRKpkgbAQ')
+      'import.meta.env.VITE_PACKETA_API_KEY': JSON.stringify(env.VITE_PACKETA_API_KEY || '')
     }
   };
 });
