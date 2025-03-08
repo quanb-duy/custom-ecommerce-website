@@ -14,6 +14,19 @@ serve(async (req) => {
   }
 
   try {
+    // Handle GET requests differently than POST requests
+    if (req.method === "GET") {
+      return new Response(
+        JSON.stringify({ 
+          error: "This endpoint requires a POST request with payment details"
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+
     // Get API key from Supabase secrets (not environment variables)
     const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
     if (!STRIPE_SECRET_KEY) {
@@ -42,7 +55,10 @@ serve(async (req) => {
       
       if (!bodyText || bodyText.trim() === '') {
         return new Response(
-          JSON.stringify({ error: 'Empty request body' }), 
+          JSON.stringify({ 
+            error: 'Empty request body', 
+            message: 'Please provide payment details in the request body' 
+          }), 
           { 
             status: 400, 
             headers: { ...corsHeaders, "Content-Type": "application/json" } 

@@ -3,20 +3,7 @@ const path = require('path');
 const app = express();
 
 // Get the PORT from environment or default to 8080
-const PORT = process.env.PORT || 8080;
-
-// Parse JSON request bodies
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Middleware to catch JSON parsing errors
-app.use((err, req, res, next) => {
-  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    console.error('JSON parsing error:', err.message);
-    return res.status(400).json({ error: 'Invalid JSON in request body' });
-  }
-  next(err);
-});
+const PORT = process.env.PORT || 8000;
 
 // Detailed environment logging to help with debugging
 console.log('Starting server with environment configuration:');
@@ -40,12 +27,31 @@ if (missingEnvVars.length > 0) {
   console.warn('The application will use fallback functionality');
 }
 
-// Serve static files from the dist directory
+// Serve static files from the dist directory BEFORE the JSON middleware
+// This way static file requests don't need JSON parsing
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Add health check endpoint for Railway
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
+});
+
+// Only apply JSON parsing to API routes
+// Create a router for API endpoints
+const apiRouter = express.Router();
+app.use('/api', apiRouter);
+
+// Apply JSON middleware only to the API router
+apiRouter.use(express.json({ limit: '1mb' }));
+apiRouter.use(express.urlencoded({ extended: true }));
+
+// JSON parsing error middleware for API routes
+apiRouter.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('JSON parsing error:', err.message);
+    return res.status(400).json({ error: 'Invalid JSON in request body' });
+  }
+  next(err);
 });
 
 // Debug route to check environment variables (non-sensitive info)
@@ -74,7 +80,12 @@ app.get('*', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).json({ error: err.message || 'Something broke on the server!' });
+  const statusCode = err.statusCode || 500;
+  const errorResponse = {
+    error: err.message || 'Something broke on the server!'
+  };
+  
+  res.status(statusCode).json(errorResponse);
 });
 
 // Start the server with improved error handling

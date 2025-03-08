@@ -14,6 +14,19 @@ serve(async (req) => {
   }
 
   try {
+    // Handle GET requests differently than POST requests
+    if (req.method === "GET") {
+      return new Response(
+        JSON.stringify({ 
+          error: "This endpoint requires a POST request with order details"
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://owigcjycsaxmpsthjbrh.supabase.co'
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     
@@ -40,7 +53,10 @@ serve(async (req) => {
       
       if (!bodyText || bodyText.trim() === '') {
         return new Response(
-          JSON.stringify({ error: 'Empty request body' }), 
+          JSON.stringify({ 
+            error: 'Empty request body',
+            message: 'Please provide order details in the request body'
+          }), 
           { 
             status: 400, 
             headers: { ...corsHeaders, "Content-Type": "application/json" } 

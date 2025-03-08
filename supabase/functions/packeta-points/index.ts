@@ -13,29 +13,37 @@ serve(async (req) => {
   }
 
   try {
-    // Handle JSON parsing with better error handling if there are request parameters
+    // Only attempt to parse JSON for POST requests
     if (req.method === "POST") {
       try {
         const bodyText = await req.text();
         
-        if (bodyText && bodyText.trim() !== '') {
-          // Only try to parse if there's content
-          try {
-            const requestData = JSON.parse(bodyText);
-            console.log('Request data successfully parsed:', requestData);
-          } catch (parseError) {
-            console.error('JSON parsing error:', parseError.message);
-            return new Response(
-              JSON.stringify({ 
-                error: 'Invalid JSON format in request body',
-                details: parseError.message
-              }), 
-              { 
-                status: 400, 
-                headers: { ...corsHeaders, "Content-Type": "application/json" } 
-              }
-            )
-          }
+        if (!bodyText || bodyText.trim() === '') {
+          return new Response(
+            JSON.stringify({ error: 'Empty request body' }), 
+            { 
+              status: 400, 
+              headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            }
+          )
+        }
+        
+        try {
+          const requestData = JSON.parse(bodyText);
+          console.log('Request data successfully parsed:', requestData);
+          // Use requestData if needed
+        } catch (parseError) {
+          console.error('JSON parsing error:', parseError.message);
+          return new Response(
+            JSON.stringify({ 
+              error: 'Invalid JSON format in request body',
+              details: parseError.message
+            }), 
+            { 
+              status: 400, 
+              headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            }
+          )
         }
       } catch (reqError) {
         console.error('Error reading request body:', reqError);
