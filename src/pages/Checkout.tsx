@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ShoppingCart, Check, CreditCard, Truck, AlertCircle } from 'lucide-react';
 import StripePaymentForm from '@/components/StripePaymentForm';
 import PacketaPickupWidget from '@/components/PacketaPickupWidget';
-import { supabase } from '@/integrations/supabase/client';
+import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface ShippingAddress {
@@ -68,6 +68,8 @@ const Checkout = () => {
     country: '',
     phone: '',
   });
+
+  const { post: invokeFunction } = useSupabaseFunctions();
 
   const shippingCost = 
     shippingMethod === 'express' ? 15.00 : 
@@ -238,15 +240,7 @@ const Checkout = () => {
         quantity: item.quantity
       }));
       
-      console.log('Submitting order with data:', {
-        order_data: orderData,
-        order_items: orderItems,
-        user_id: user.id,
-        payment_intent_id: paymentId
-      });
-      
-      const { data, error } = await supabase.functions.invoke('create-order', {
-        method: 'POST',
+      const { data, error } = await invokeFunction('create-order', {
         body: {
           order_data: orderData,
           order_items: orderItems,
@@ -257,7 +251,7 @@ const Checkout = () => {
       
       if (error) {
         console.error('Error response from create-order:', error);
-        throw new Error(`Error creating order: ${error.message}`);
+        throw new Error(`Error creating order: ${error}`);
       }
       
       toast({

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 
 // Initialize Stripe with the publishable key with fallback
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
@@ -30,6 +31,7 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { post: invokeFunction } = useSupabaseFunctions();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,11 +47,10 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
     setError(null);
 
     try {
-      // Create payment intent on the server - ensure we're using POST method
-      const { data: paymentIntentData, error: paymentIntentError } = await supabase.functions.invoke(
+      // Create payment intent on the server
+      const { data: paymentIntentData, error: paymentIntentError } = await invokeFunction(
         'create-payment-intent',
         {
-          method: 'POST', // Ensure POST method is used
           body: { 
             amount: Math.round(amount * 100), // Convert to cents for Stripe
             currency: 'usd'
@@ -58,7 +59,8 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
       );
 
       if (paymentIntentError) {
-        throw new Error(paymentIntentError.message || 'Failed to create payment intent');
+        console.error('Error creating payment intent:', paymentIntentError);
+        throw new Error(typeof paymentIntentError === 'string' ? paymentIntentError : 'Failed to create payment intent');
       }
 
       if (!paymentIntentData?.clientSecret) {
@@ -97,15 +99,11 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
       } else {
         throw new Error(`Payment status: ${paymentIntent.status}`);
       }
-    } catch (err: any) {
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
       console.error('Payment error:', err);
-      setError(err.message || 'An error occurred during payment');
-      onPaymentError(err.message || 'An error occurred during payment');
-      toast({
-        title: 'Payment failed',
-        description: err.message || 'An error occurred during payment',
-        variant: 'destructive',
-      });
+      setError(errorMessage);
+      onPaymentError(errorMessage);
     } finally {
       setLoading(false);
     }

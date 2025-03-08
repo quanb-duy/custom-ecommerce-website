@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 
 interface PacketaPoint {
   id: string;
@@ -34,6 +35,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const widgetRef = useRef<any>(null);
+  const { get: invokeGetFunction } = useSupabaseFunctions();
 
   // Load the Packeta widget script
   useEffect(() => {
@@ -62,12 +64,10 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
         setLoading(true);
         setError(null);
         
-        const { data, error } = await supabase.functions.invoke('packeta-points', {
-          method: 'GET'
-        });
+        const { data, error } = await invokeGetFunction('packeta-points');
         
         if (error) {
-          throw new Error(error.message || 'Failed to load pickup points');
+          throw new Error(error || 'Failed to load pickup points');
         }
         
         if (data?.pickupPoints) {
@@ -91,9 +91,10 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
             }
           ]);
         }
-      } catch (err: any) {
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         console.error('Failed to fetch pickup points:', err);
-        setError('Failed to load pickup points: ' + (err.message || 'Unknown error'));
+        setError('Failed to load pickup points: ' + errorMessage);
         // Fallback to hardcoded pickup points in case of error
         setPickupPoints([
           {
@@ -117,7 +118,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
     };
 
     fetchPickupPoints();
-  }, [toast]);
+  }, []);
 
   const openPacketaWidget = () => {
     if (widgetLoaded && window.Packeta) {
@@ -150,9 +151,10 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
         }
         
         widgetRef.current.open();
-      } catch (err: any) {
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         console.error('Error opening Packeta widget:', err);
-        setError('Error opening Packeta widget: ' + (err.message || 'Unknown error'));
+        setError('Error opening Packeta widget: ' + errorMessage);
         toast({
           title: 'Widget error',
           description: 'Failed to open pickup points widget. Please try selecting from the list below.',
