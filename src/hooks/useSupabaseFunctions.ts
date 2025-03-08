@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface FunctionOptions {
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
   headers?: Record<string, string>;
 }
 
@@ -10,7 +10,7 @@ export function useSupabaseFunctions() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const invokeFunction = async <T = any>(
+  const invokeFunction = async <T = unknown>(
     functionName: string, 
     method: 'GET' | 'POST' = 'POST', // Default to POST to match most common API patterns
     options?: FunctionOptions
@@ -48,10 +48,10 @@ export function useSupabaseFunctions() {
   };
 
   // Convenience methods for GET and POST
-  const get = <T = any>(functionName: string, options?: FunctionOptions) => 
+  const get = <T = unknown>(functionName: string, options?: FunctionOptions) => 
     invokeFunction<T>(functionName, 'GET', options);
   
-  const post = <T = any>(functionName: string, options?: FunctionOptions) => 
+  const post = <T = unknown>(functionName: string, options?: FunctionOptions) => 
     invokeFunction<T>(functionName, 'POST', options);
 
   return {

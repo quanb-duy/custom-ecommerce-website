@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 // Get dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -19,6 +20,21 @@ console.log('Starting server with configuration:');
 console.log(`Node Version: ${process.version}`);
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`PORT: ${PORT}`);
+console.log(`Current directory: ${__dirname}`);
+
+// Check if dist directory exists
+const distPath = path.join(__dirname, 'dist');
+if (!fs.existsSync(distPath)) {
+  console.warn(`WARNING: 'dist' directory does not exist at ${distPath}`);
+  console.warn('Creating empty dist directory for fallback');
+  try {
+    fs.mkdirSync(distPath, { recursive: true });
+    const indexHtml = '<html><body><h1>Application is starting...</h1><p>If you continue to see this message, there may be a build issue.</p></body></html>';
+    fs.writeFileSync(path.join(distPath, 'index.html'), indexHtml);
+  } catch (err) {
+    console.error('Failed to create dist directory:', err);
+  }
+}
 
 // IMPORTANT: Add middleware in the correct order!
 
@@ -47,7 +63,6 @@ app.get('/health', (req, res) => {
 });
 
 // 4. Static file serving
-const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath, {
   // Set correct cache headers
   etag: true,
