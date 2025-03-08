@@ -36,7 +36,25 @@ serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     })
 
-    const { amount, currency = 'usd', payment_method_types = ['card'] } = await req.json()
+    // Safely parse the JSON body
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (jsonError) {
+      console.error('Error parsing JSON:', jsonError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid JSON in request body', 
+          details: jsonError.message 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+
+    const { amount, currency = 'usd', payment_method_types = ['card'] } = requestBody || {};
 
     if (!amount) {
       return new Response(

@@ -3,8 +3,8 @@ const express = require('express');
 const path = require('path');
 const app = express();
 
-// Get the PORT from environment or default to 8080
-const PORT = process.env.PORT || 8080;
+// Get the PORT from environment or default to 8000 (matching Deno's default)
+const PORT = process.env.PORT || 8000;
 
 // Detailed environment logging to help with debugging
 console.log('Starting server with environment configuration:');
@@ -27,6 +27,19 @@ if (missingEnvVars.length > 0) {
   console.warn('Warning: Missing environment variables:', missingEnvVars.join(', '));
   console.warn('The application will use fallback functionality');
 }
+
+// JSON parsing middleware with error handling
+app.use(express.json({
+  verify: (req, res, buf, encoding) => {
+    try {
+      JSON.parse(buf);
+    } catch (e) {
+      console.error('Invalid JSON received:', e);
+      res.status(400).json({ error: 'Invalid JSON in request body' });
+      throw new Error('Invalid JSON');
+    }
+  }
+}));
 
 // Serve static files from the dist directory
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -62,7 +75,17 @@ app.get('*', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).send('Something broke on the server!');
+  if (err.message === 'Invalid JSON') {
+    // Already handled in the JSON middleware
+    return;
+  }
+  
+  if (!res.headersSent) {
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      message: process.env.NODE_ENV === 'production' ? undefined : err.message 
+    });
+  }
 });
 
 // Start the server with improved error handling

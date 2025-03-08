@@ -34,12 +34,30 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
+    // Safely parse the JSON body
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (jsonError) {
+      console.error('Error parsing JSON:', jsonError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid JSON in request body', 
+          details: jsonError.message 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+
     const { 
       order_data,
       order_items,
       user_id,
       payment_intent_id = null
-    } = await req.json()
+    } = requestBody || {};
 
     if (!order_data || !order_items || !user_id) {
       return new Response(
