@@ -1,0 +1,1 @@
+This file confirms that Railway is correctly serving static files from the Express server. 
