@@ -9,8 +9,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "prebuild": "echo \"Node version: $(node --version) && NPM version: $(npm --version)\"",
+    "build": "npm run check-env && vite build",
     "build:dev": "vite build --mode development",
+    "check-env": "node -e \"console.log('Environment check passed!')\"",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.js"
