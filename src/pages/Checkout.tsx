@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -10,11 +11,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { ShoppingCart, Check, CreditCard, Truck, AlertCircle } from 'lucide-react';
+import { ShoppingCart, Check, CreditCard, Truck } from 'lucide-react';
 import StripePaymentForm from '@/components/StripePaymentForm';
 import PacketaPickupWidget from '@/components/PacketaPickupWidget';
 import { supabase } from '@/integrations/supabase/client';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface ShippingAddress {
   fullName: string;
@@ -35,16 +35,6 @@ interface PacketaPoint {
   city: string;
 }
 
-interface ValidationErrors {
-  fullName?: string;
-  addressLine1?: string;
-  city?: string;
-  state?: string;
-  zipCode?: string;
-  country?: string;
-  phone?: string;
-}
-
 const Checkout = () => {
   const { cartItems, cartTotal, totalItems, subtotal } = useCart();
   const { user } = useAuth();
@@ -56,8 +46,7 @@ const Checkout = () => {
   const [paymentStep, setPaymentStep] = useState(false);
   const [packetaPoint, setPacketaPoint] = useState<PacketaPoint | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
-  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
-
+  
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
     addressLine1: '',
@@ -69,18 +58,22 @@ const Checkout = () => {
     phone: '',
   });
 
+  // Calculate shipping cost based on selected method
   const shippingCost = 
     shippingMethod === 'express' ? 15.00 : 
     shippingMethod === 'packeta' ? 7.50 : 5.00;
   
+  // Calculate total with shipping
   const orderTotal = subtotal + shippingCost + (subtotal * 0.07);
 
   useEffect(() => {
+    // Redirect to cart if cart is empty
     if (cartItems.length === 0) {
       navigate('/cart');
       return;
     }
     
+    // Redirect to login if not authenticated
     if (!user) {
       toast({
         title: "Please sign in",
@@ -91,6 +84,7 @@ const Checkout = () => {
     }
   }, [cartItems.length, user, navigate, toast]);
 
+  // Reset packeta point when shipping method changes
   useEffect(() => {
     if (shippingMethod !== 'packeta') {
       setPacketaPoint(null);
@@ -99,69 +93,28 @@ const Checkout = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    
-    const sanitizedValue = value.replace(/[<>"']/g, '');
-    
     setShippingAddress(prev => ({
       ...prev,
-      [name]: sanitizedValue
+      [name]: value
     }));
-    
-    if (validationErrors[name as keyof ValidationErrors]) {
-      setValidationErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name as keyof ValidationErrors];
-        return newErrors;
-      });
-    }
-  };
-
-  const validatePhoneNumber = (phone: string): boolean => {
-    const phoneRegex = /^[0-9+\- ()]+$/;
-    return phoneRegex.test(phone);
-  };
-
-  const validateZipCode = (zipCode: string): boolean => {
-    const zipRegex = /^[0-9A-Z]{3,10}(\s*[0-9A-Z]{2,4})?$/i;
-    return zipRegex.test(zipCode);
   };
 
   const validateShippingInfo = () => {
-    const errors: ValidationErrors = {};
-    
+    // For standard and express shipping, validate address fields
     if (shippingMethod !== 'packeta') {
-      if (!shippingAddress.fullName.trim()) {
-        errors.fullName = "Full name is required";
-      }
-      
-      if (!shippingAddress.addressLine1.trim()) {
-        errors.addressLine1 = "Address is required";
-      }
-      
-      if (!shippingAddress.city.trim()) {
-        errors.city = "City is required";
-      }
-      
-      if (!shippingAddress.state.trim()) {
-        errors.state = "State is required";
-      }
-      
-      if (!shippingAddress.zipCode.trim()) {
-        errors.zipCode = "Zip code is required";
-      } else if (!validateZipCode(shippingAddress.zipCode)) {
-        errors.zipCode = "Invalid zip code format";
-      }
-      
-      if (!shippingAddress.country.trim()) {
-        errors.country = "Country is required";
-      }
-      
-      if (!shippingAddress.phone.trim()) {
-        errors.phone = "Phone number is required";
-      } else if (!validatePhoneNumber(shippingAddress.phone)) {
-        errors.phone = "Invalid phone number format";
+      if (!shippingAddress.fullName || !shippingAddress.addressLine1 || 
+          !shippingAddress.city || !shippingAddress.state || 
+          !shippingAddress.zipCode || !shippingAddress.country || 
+          !shippingAddress.phone) {
+        toast({
+          title: "Missing information",
+          description: "Please fill in all required shipping fields",
+          variant: "destructive",
+        });
+        return false;
       }
     } else {
+      // For Packeta, validate pickup point
       if (!packetaPoint) {
         toast({
           title: "Missing pickup point",
@@ -170,20 +123,8 @@ const Checkout = () => {
         });
         return false;
       }
-      
-      if (!shippingAddress.fullName.trim()) {
-        errors.fullName = "Full name is required";
-      }
-      
-      if (!shippingAddress.phone.trim()) {
-        errors.phone = "Phone number is required";
-      } else if (!validatePhoneNumber(shippingAddress.phone)) {
-        errors.phone = "Invalid phone number format";
-      }
     }
-    
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return true;
   };
 
   const proceedToPayment = (e: React.FormEvent) => {
@@ -215,6 +156,7 @@ const Checkout = () => {
     setIsLoading(true);
     
     try {
+      // Prepare shipping address based on shipping method
       const shippingAddressData = shippingMethod === 'packeta' 
         ? {
             type: 'packeta',
@@ -224,6 +166,7 @@ const Checkout = () => {
           }
         : shippingAddress;
       
+      // Prepare order data
       const orderData = {
         shipping_address: shippingAddressData,
         total: orderTotal,
@@ -231,6 +174,7 @@ const Checkout = () => {
         payment_status: paymentId ? 'paid' : 'pending',
       };
       
+      // Prepare order items from cart
       const orderItems = cartItems.map(item => ({
         product_id: item.product_id,
         product_name: item.product.name,
@@ -238,6 +182,7 @@ const Checkout = () => {
         quantity: item.quantity
       }));
       
+      // Call the Supabase edge function to create the order
       const { data, error } = await supabase.functions.invoke('create-order', {
         body: {
           order_data: orderData,
@@ -256,6 +201,7 @@ const Checkout = () => {
         description: "Thank you for your purchase.",
       });
       
+      // Navigate to order confirmation page
       navigate('/order-confirmation');
     } catch (error: any) {
       console.error('Error creating order:', error);
@@ -301,7 +247,9 @@ const Checkout = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           <div className="lg:col-span-2">
             {!paymentStep ? (
+              // Shipping Information Form
               <form onSubmit={proceedToPayment}>
+                {/* Shipping Method Section */}
                 <Card className="mb-8">
                   <CardContent className="pt-6">
                     <h2 className="text-xl font-medium mb-4">Shipping Method</h2>
@@ -341,6 +289,7 @@ const Checkout = () => {
                   </CardContent>
                 </Card>
 
+                {/* Packeta Widget (if Packeta is selected) */}
                 {shippingMethod === 'packeta' && (
                   <Card className="mb-8">
                     <CardContent className="pt-6">
@@ -358,11 +307,8 @@ const Checkout = () => {
                             name="fullName"
                             value={shippingAddress.fullName}
                             onChange={handleInputChange}
-                            className={validationErrors.fullName ? "border-red-500" : ""}
+                            required
                           />
-                          {validationErrors.fullName && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.fullName}</p>
-                          )}
                         </div>
                         
                         <div>
@@ -373,18 +319,15 @@ const Checkout = () => {
                             type="tel"
                             value={shippingAddress.phone}
                             onChange={handleInputChange}
-                            className={validationErrors.phone ? "border-red-500" : ""}
-                            placeholder="e.g. +1 (555) 123-4567"
+                            required
                           />
-                          {validationErrors.phone && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.phone}</p>
-                          )}
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 )}
                 
+                {/* Shipping Address (if standard or express is selected) */}
                 {(shippingMethod === 'standard' || shippingMethod === 'express') && (
                   <Card className="mb-8">
                     <CardContent className="pt-6">
@@ -398,11 +341,8 @@ const Checkout = () => {
                             name="fullName"
                             value={shippingAddress.fullName}
                             onChange={handleInputChange}
-                            className={validationErrors.fullName ? "border-red-500" : ""}
+                            required
                           />
-                          {validationErrors.fullName && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.fullName}</p>
-                          )}
                         </div>
                         
                         <div>
@@ -412,11 +352,8 @@ const Checkout = () => {
                             name="addressLine1"
                             value={shippingAddress.addressLine1}
                             onChange={handleInputChange}
-                            className={validationErrors.addressLine1 ? "border-red-500" : ""}
+                            required
                           />
-                          {validationErrors.addressLine1 && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.addressLine1}</p>
-                          )}
                         </div>
                         
                         <div>
@@ -437,11 +374,8 @@ const Checkout = () => {
                               name="city"
                               value={shippingAddress.city}
                               onChange={handleInputChange}
-                              className={validationErrors.city ? "border-red-500" : ""}
+                              required
                             />
-                            {validationErrors.city && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.city}</p>
-                            )}
                           </div>
                           <div>
                             <Label htmlFor="state">State/Province</Label>
@@ -450,11 +384,8 @@ const Checkout = () => {
                               name="state"
                               value={shippingAddress.state}
                               onChange={handleInputChange}
-                              className={validationErrors.state ? "border-red-500" : ""}
+                              required
                             />
-                            {validationErrors.state && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.state}</p>
-                            )}
                           </div>
                         </div>
                         
@@ -466,11 +397,8 @@ const Checkout = () => {
                               name="zipCode"
                               value={shippingAddress.zipCode}
                               onChange={handleInputChange}
-                              className={validationErrors.zipCode ? "border-red-500" : ""}
+                              required
                             />
-                            {validationErrors.zipCode && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.zipCode}</p>
-                            )}
                           </div>
                           <div>
                             <Label htmlFor="country">Country</Label>
@@ -479,11 +407,8 @@ const Checkout = () => {
                               name="country"
                               value={shippingAddress.country}
                               onChange={handleInputChange}
-                              className={validationErrors.country ? "border-red-500" : ""}
+                              required
                             />
-                            {validationErrors.country && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.country}</p>
-                            )}
                           </div>
                         </div>
                         
@@ -495,12 +420,8 @@ const Checkout = () => {
                             type="tel"
                             value={shippingAddress.phone}
                             onChange={handleInputChange}
-                            className={validationErrors.phone ? "border-red-500" : ""}
-                            placeholder="e.g. +1 (555) 123-4567"
+                            required
                           />
-                          {validationErrors.phone && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.phone}</p>
-                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -512,6 +433,7 @@ const Checkout = () => {
                 </Button>
               </form>
             ) : (
+              // Payment Form
               <Card>
                 <CardContent className="pt-6">
                   <h2 className="text-xl font-medium mb-4">Payment Information</h2>
@@ -571,6 +493,7 @@ const Checkout = () => {
             )}
           </div>
           
+          {/* Order Summary */}
           <div>
             <Card className="sticky top-24">
               <CardContent className="pt-6">

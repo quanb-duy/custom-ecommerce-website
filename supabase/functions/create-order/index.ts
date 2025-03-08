@@ -19,45 +19,17 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     
     if (!supabaseServiceKey) {
-      console.error('SUPABASE_SERVICE_ROLE_KEY is required but not set in Supabase secrets')
-      return new Response(
-        JSON.stringify({ 
-          error: 'Service temporarily unavailable', 
-          details: 'Missing service role key'
-        }), 
-        { 
-          status: 503, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      )
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is required')
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
-    // Safely parse the JSON body
-    let requestBody;
-    try {
-      requestBody = await req.json();
-    } catch (jsonError) {
-      console.error('Error parsing JSON:', jsonError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Invalid JSON in request body', 
-          details: jsonError.message 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      );
-    }
-
     const { 
       order_data,
       order_items,
       user_id,
       payment_intent_id = null
-    } = requestBody || {};
+    } = await req.json()
 
     if (!order_data || !order_items || !user_id) {
       return new Response(
@@ -85,7 +57,6 @@ serve(async (req) => {
       .single()
 
     if (orderError) {
-      console.error('Error creating order:', orderError)
       throw new Error(`Error creating order: ${orderError.message}`)
     }
 
@@ -102,7 +73,6 @@ serve(async (req) => {
       .insert(orderItemsWithOrderId)
 
     if (itemsError) {
-      console.error('Error creating order items:', itemsError)
       throw new Error(`Error creating order items: ${itemsError.message}`)
     }
 

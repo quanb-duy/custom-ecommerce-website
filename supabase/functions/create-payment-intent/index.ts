@@ -15,20 +15,9 @@ serve(async (req) => {
   }
 
   try {
-    // Get API key from Supabase secrets (not environment variables)
     const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
     if (!STRIPE_SECRET_KEY) {
-      console.error('STRIPE_SECRET_KEY is not set in Supabase secrets')
-      return new Response(
-        JSON.stringify({ 
-          error: 'Payment service is temporarily unavailable', 
-          code: 'missing_api_key'
-        }), 
-        { 
-          status: 503, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      )
+      throw new Error('STRIPE_SECRET_KEY is not set in environment variables')
     }
 
     const stripe = new Stripe(STRIPE_SECRET_KEY, {
@@ -36,25 +25,7 @@ serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     })
 
-    // Safely parse the JSON body
-    let requestBody;
-    try {
-      requestBody = await req.json();
-    } catch (jsonError) {
-      console.error('Error parsing JSON:', jsonError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Invalid JSON in request body', 
-          details: jsonError.message 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      );
-    }
-
-    const { amount, currency = 'usd', payment_method_types = ['card'] } = requestBody || {};
+    const { amount, currency = 'usd', payment_method_types = ['card'] } = await req.json()
 
     if (!amount) {
       return new Response(
@@ -68,39 +39,25 @@ serve(async (req) => {
 
     // Create payment intent
     console.log(`Creating payment intent for amount: ${amount} ${currency}`)
-    try {
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount,
-        currency,
-        payment_method_types,
-        // In production, consider validating more data
-      })
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency,
+      payment_method_types,
+      // In production, consider validating more data
+    })
 
-      console.log(`Payment intent created: ${paymentIntent.id}`)
-      
-      return new Response(
-        JSON.stringify({ 
-          clientSecret: paymentIntent.client_secret,
-          id: paymentIntent.id
-        }), 
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      )
-    } catch (stripeError) {
-      console.error('Stripe API error:', stripeError)
-      return new Response(
-        JSON.stringify({ 
-          error: 'Payment processing error', 
-          details: stripeError.message
-        }), 
-        { 
-          status: 422, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      )
-    }
+    console.log(`Payment intent created: ${paymentIntent.id}`)
+    
+    return new Response(
+      JSON.stringify({ 
+        clientSecret: paymentIntent.client_secret,
+        id: paymentIntent.id
+      }), 
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      }
+    )
   } catch (error) {
     console.error('Error creating payment intent:', error)
     return new Response(

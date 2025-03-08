@@ -10,13 +10,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
-// Initialize Stripe with the publishable key with fallback
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-const stripePromise = stripeKey 
-  ? loadStripe(stripeKey)
-  : Promise.resolve(null);
+// Initialize Stripe with the publishable key
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 interface PaymentFormProps {
   amount: number;
@@ -36,9 +32,8 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
     event.preventDefault();
     
     if (!stripe || !elements) {
-      // Stripe.js has not loaded yet or missing API key
-      setError('Stripe payment system is not available at the moment');
-      onPaymentError('Stripe payment system is not available');
+      // Stripe.js has not loaded yet. Make sure to disable
+      // form submission until Stripe.js has loaded.
       return;
     }
 
@@ -113,14 +108,6 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {!stripe && (
-        <Alert variant="destructive">
-          <AlertDescription>
-            Stripe payment system is not available. Please try again later or contact support.
-          </AlertDescription>
-        </Alert>
-      )}
-      
       <div className="p-4 border rounded-md bg-white">
         <CardElement 
           options={{
@@ -168,33 +155,6 @@ interface StripePaymentFormProps {
 }
 
 export const StripePaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: StripePaymentFormProps) => {
-  const [stripeReady, setStripeReady] = useState(false);
-  
-  useEffect(() => {
-    // Check if Stripe is available
-    stripePromise.then(stripe => {
-      setStripeReady(!!stripe);
-    });
-  }, []);
-  
-  if (!stripeReady) {
-    return (
-      <div className="space-y-4">
-        <Alert>
-          <AlertDescription>
-            Payment system is currently unavailable. You can continue with your order and we'll contact you for payment details.
-          </AlertDescription>
-        </Alert>
-        <Button 
-          onClick={() => onPaymentSuccess('manual-payment-required')}
-          className="w-full"
-        >
-          Continue with Order (Manual Payment)
-        </Button>
-      </div>
-    );
-  }
-  
   return (
     <Elements stripe={stripePromise}>
       <PaymentForm 
