@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -63,7 +62,9 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
         setLoading(true);
         setError(null);
         
-        const { data, error } = await supabase.functions.invoke('packeta-points');
+        const { data, error } = await supabase.functions.invoke('packeta-points', {
+          method: 'GET'
+        });
         
         if (error) {
           throw new Error(error.message || 'Failed to load pickup points');

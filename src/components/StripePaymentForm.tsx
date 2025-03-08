@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
@@ -50,10 +49,11 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
       const { data: paymentIntentData, error: paymentIntentError } = await supabase.functions.invoke(
         'create-payment-intent',
         {
+          method: 'POST',
           body: { 
             amount: Math.round(amount * 100), // Convert to cents for Stripe
             currency: 'usd'
-          },
+          }
         }
       );
 

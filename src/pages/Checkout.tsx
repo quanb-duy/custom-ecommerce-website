@@ -239,6 +239,7 @@ const Checkout = () => {
       }));
       
       const { data, error } = await supabase.functions.invoke('create-order', {
+        method: 'POST',
         body: {
           order_data: orderData,
           order_items: orderItems,
