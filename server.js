@@ -1,10 +1,22 @@
-
 const express = require('express');
 const path = require('path');
 const app = express();
 
 // Get the PORT from environment or default to 8080
 const PORT = process.env.PORT || 8080;
+
+// Parse JSON request bodies
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Middleware to catch JSON parsing errors
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('JSON parsing error:', err.message);
+    return res.status(400).json({ error: 'Invalid JSON in request body' });
+  }
+  next(err);
+});
 
 // Detailed environment logging to help with debugging
 console.log('Starting server with environment configuration:');
@@ -62,7 +74,7 @@ app.get('*', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).send('Something broke on the server!');
+  res.status(500).json({ error: err.message || 'Something broke on the server!' });
 });
 
 // Start the server with improved error handling

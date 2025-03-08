@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@12.0.0"
 
@@ -36,7 +35,38 @@ serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     })
 
-    const { amount, currency = 'usd', payment_method_types = ['card'] } = await req.json()
+    // Improved JSON parsing with error handling
+    let requestData;
+    try {
+      const bodyText = await req.text();
+      
+      if (!bodyText || bodyText.trim() === '') {
+        return new Response(
+          JSON.stringify({ error: 'Empty request body' }), 
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, "Content-Type": "application/json" } 
+          }
+        )
+      }
+      
+      requestData = JSON.parse(bodyText);
+      console.log('Request data successfully parsed');
+    } catch (parseError) {
+      console.error('JSON parsing error:', parseError.message);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid JSON format in request body',
+          details: parseError.message
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+
+    const { amount, currency = 'usd', payment_method_types = ['card'] } = requestData;
 
     if (!amount) {
       return new Response(
@@ -86,7 +116,10 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error creating payment intent:', error)
     return new Response(
-      JSON.stringify({ error: error.message }), 
+      JSON.stringify({ 
+        error: error.message || 'An unexpected error occurred',
+        type: error.name || 'UnknownError' 
+      }), 
       { 
         status: 500, 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 

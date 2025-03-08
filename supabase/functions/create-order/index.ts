@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -34,12 +33,43 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
+    // Improved JSON parsing with error handling
+    let requestData;
+    try {
+      const bodyText = await req.text();
+      
+      if (!bodyText || bodyText.trim() === '') {
+        return new Response(
+          JSON.stringify({ error: 'Empty request body' }), 
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, "Content-Type": "application/json" } 
+          }
+        )
+      }
+      
+      requestData = JSON.parse(bodyText);
+      console.log('Request data successfully parsed');
+    } catch (parseError) {
+      console.error('JSON parsing error:', parseError.message);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid JSON format in request body',
+          details: parseError.message
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+    
     const { 
       order_data,
       order_items,
       user_id,
       payment_intent_id = null
-    } = await req.json()
+    } = requestData;
 
     if (!order_data || !order_items || !user_id) {
       return new Response(
@@ -115,7 +145,10 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error creating order:', error)
     return new Response(
-      JSON.stringify({ error: error.message }), 
+      JSON.stringify({ 
+        error: error.message || 'An unexpected error occurred',
+        type: error.name || 'UnknownError'
+      }), 
       { 
         status: 500, 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 

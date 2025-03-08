@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
@@ -14,6 +13,35 @@ serve(async (req) => {
   }
 
   try {
+    // Handle JSON parsing with better error handling if there are request parameters
+    if (req.method === "POST") {
+      try {
+        const bodyText = await req.text();
+        
+        if (bodyText && bodyText.trim() !== '') {
+          // Only try to parse if there's content
+          try {
+            const requestData = JSON.parse(bodyText);
+            console.log('Request data successfully parsed:', requestData);
+          } catch (parseError) {
+            console.error('JSON parsing error:', parseError.message);
+            return new Response(
+              JSON.stringify({ 
+                error: 'Invalid JSON format in request body',
+                details: parseError.message
+              }), 
+              { 
+                status: 400, 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+              }
+            )
+          }
+        }
+      } catch (reqError) {
+        console.error('Error reading request body:', reqError);
+      }
+    }
+
     const PACKETA_API_KEY = Deno.env.get('PACKETA_API_KEY')
     const PACKETA_API_PASSWORD = Deno.env.get('PACKETA_API_PASSWORD')
     
@@ -126,7 +154,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message,
+        error: error.message || 'An unexpected error occurred',
+        type: error.name || 'UnknownError',
         pickupPoints: fallbackPickupPoints,
         fallback: true
       }), 
