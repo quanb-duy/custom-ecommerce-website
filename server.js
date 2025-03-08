@@ -37,21 +37,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// SPECIAL VERIFICATION ROUTE - This should be very unique to avoid conflicts
-app.get('/express-server-running-verification-12345', (req, res) => {
-  res.status(200).send(`
-    <html>
-      <head><title>Express Server Verification</title></head>
-      <body>
-        <h1>Express Server is Running!</h1>
-        <p>This confirms that the Express server is handling requests correctly.</p>
-        <p>Time: ${new Date().toISOString()}</p>
-        <p>Environment: ${process.env.NODE_ENV || 'Not set'}</p>
-      </body>
-    </html>
-  `);
-});
-
 // 3. Health check endpoint (before static files)
 app.get('/health', (req, res) => {
   res.status(200).send('OK');

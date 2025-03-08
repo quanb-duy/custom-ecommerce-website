@@ -3,16 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "main": "server.js",
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "scripts": {
     "dev": "vite",
-    "prebuild": "echo \"Node version: $(node --version) && NPM version: $(npm --version)\"",
-    "build": "npm run check-env && vite build",
+    "build": "vite build",
     "build:dev": "vite build --mode development",
-    "check-env": "node -e \"console.log('Environment check passed!')\"",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.js"
