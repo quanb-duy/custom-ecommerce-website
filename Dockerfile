@@ -12,6 +12,9 @@ COPY . .
 # Build the application
 RUN npm run build
 
+# Set the PORT environment variable
+ENV PORT=8000
+
 # Expose port
 EXPOSE 8000
 

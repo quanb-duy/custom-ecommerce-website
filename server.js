@@ -8,14 +8,15 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Get the PORT from environment
+// Get the PORT from environment - MUST match Railway's expected port
 const PORT = process.env.PORT || 8000;
 
 // Log startup configuration
 console.log('===== SERVER STARTING =====');
 console.log(`Server version: ${new Date().toISOString()}`);
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
-console.log(`PORT: ${PORT}`);
+console.log(`PORT env variable: ${process.env.PORT}`);
+console.log(`Using PORT: ${PORT}`);
 console.log(`__dirname: ${__dirname}`);
 console.log('==========================');
 
@@ -104,6 +105,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`===== SERVER RUNNING =====`);
   console.log(`Server running on http://0.0.0.0:${PORT}`);
+  console.log(`Access your application at: https://custom-ecommerce-website.up.railway.app/`);
   console.log(`Static files being served from: ${distPath}`);
   console.log(`==========================`);
 });
