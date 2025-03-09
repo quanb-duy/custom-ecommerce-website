@@ -1,7 +1,7 @@
+
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
 
 // Get dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -16,20 +16,6 @@ const PORT = process.env.PORT || 8000;
 console.log('Starting server with environment configuration:');
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`PORT: ${PORT}`);
-console.log(`Current directory: ${__dirname}`);
-
-// Check if dist directory exists
-const distPath = path.join(__dirname, 'dist');
-try {
-  const distExists = fs.existsSync(distPath);
-  console.log(`Dist directory exists: ${distExists}`);
-  if (distExists) {
-    const distContents = fs.readdirSync(distPath);
-    console.log(`Dist directory contents: ${distContents.join(', ')}`);
-  }
-} catch (error) {
-  console.error(`Error checking dist directory: ${error.message}`);
-}
 
 // 1. Request logging for debugging
 app.use((req, res, next) => {
@@ -71,7 +57,13 @@ app.get('/debug-env', (req, res) => {
   res.json(safeEnv);
 });
 
-// 5. API routes with JSON parsing - BEFORE static file serving
+// Static file serving BEFORE API route handling
+// This must come BEFORE API and Supabase handling to prioritize static files
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+
+// 5. API routes with JSON parsing
+// This should come AFTER static files to prevent any conflicts
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
 apiRouter.use(express.json());
@@ -98,22 +90,11 @@ app.all('/supabase/*', (req, res) => {
   });
 });
 
-// 7. Static file serving - AFTER API routing
-console.log('Setting up static file serving from:', distPath);
-app.use(express.static(distPath));
-
-// 8. SPA fallback - serve index.html for all other routes
-const indexPath = path.join(distPath, 'index.html');
-try {
-  const indexExists = fs.existsSync(indexPath);
-  console.log(`Index.html exists: ${indexExists}`);
-} catch (error) {
-  console.error(`Error checking index.html: ${error.message}`);
-}
-
+// 7. SPA fallback - serve index.html for all other routes
+// This MUST be after all other routes and static file serving
 app.get('*', (req, res) => {
   console.log('Serving SPA fallback for:', req.originalUrl);
-  res.sendFile(indexPath);
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Global error handler
@@ -125,5 +106,4 @@ app.use((err, req, res, next) => {
 // Start the server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
-  console.log(`Static files being served from: ${distPath}`);
 });
