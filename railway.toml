@@ -1,0 +1,5 @@
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 10
+startCommand = "node server.js"
+restartPolicyType = "ON_FAILURE" 

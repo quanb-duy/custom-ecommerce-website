@@ -30,7 +30,13 @@ app.use(express.urlencoded({ extended: true }));
 
 // 2. Request logging for debugging
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl || req.url}`);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - IP: ${req.ip}`);
+  
+  // Log when the response finishes
+  res.on('finish', () => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Response: ${res.statusCode}`);
+  });
+  
   next();
 });
 
@@ -49,6 +55,7 @@ app.use((req, res, next) => {
 
 // 4. Health check endpoint
 app.get('/health', (req, res) => {
+  console.log('Health check endpoint called');
   res.status(200).send('OK');
 });
 
@@ -101,7 +108,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start the server
+// Make the '/api' endpoint return 200 OK as well for Railway health checks
+app.get('/api', (req, res) => {
+  console.log('API root endpoint called');
+  res.status(200).json({ status: 'API is available' });
+});
+
+// Start the server on all network interfaces
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`===== SERVER RUNNING =====`);
   console.log(`Server running on http://0.0.0.0:${PORT}`);
