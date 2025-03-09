@@ -1,3 +1,4 @@
+
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -46,11 +47,6 @@ app.get('/debug-env', (req, res) => {
   const safeEnv = {
     NODE_ENV: process.env.NODE_ENV,
     PORT: process.env.PORT,
-    NODE_VERSION: process.version,
-    PLATFORM: process.platform,
-    ARCH: process.arch,
-    CWD: process.cwd(),
-    HOSTNAME: process.env.HOSTNAME || 'unknown',
     // Check if variables exist without exposing values
     HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
     HAS_SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_PUBLIC_KEY,
@@ -64,7 +60,6 @@ app.get('/debug-env', (req, res) => {
 // Static file serving BEFORE API route handling
 // This must come BEFORE API and Supabase handling to prioritize static files
 const distPath = path.join(__dirname, 'dist');
-console.log(`Serving static files from: ${distPath}`);
 app.use(express.static(distPath));
 
 // 5. API routes with JSON parsing
@@ -111,6 +106,4 @@ app.use((err, req, res, next) => {
 // Start the server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Static files are being served from: ${distPath}`);
 });
