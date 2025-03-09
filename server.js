@@ -36,7 +36,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 3. Health check endpoint (before static files)
+// 3. Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
@@ -57,13 +57,12 @@ app.get('/debug-env', (req, res) => {
   res.json(safeEnv);
 });
 
-// Static file serving BEFORE API route handling
-// This must come BEFORE API and Supabase handling to prioritize static files
+// IMPORTANT: Serve static files before API routes
+// This ensures the SPA is served properly
 const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath));
 
 // 5. API routes with JSON parsing
-// This should come AFTER static files to prevent any conflicts
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
 apiRouter.use(express.json());
