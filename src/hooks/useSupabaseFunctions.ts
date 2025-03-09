@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface FunctionOptions {
-  body?: Record<string, unknown>;
+  body?: Record<string, any>;
   headers?: Record<string, string>;
 }
 
@@ -10,30 +10,27 @@ export function useSupabaseFunctions() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const invokeFunction = async <T = unknown>(
+  const invokeFunction = async <T = any>(
     functionName: string, 
-    method: 'GET' | 'POST' = 'POST', // Default to POST to match most common API patterns
+    method: 'GET' | 'POST', 
     options?: FunctionOptions
   ): Promise<{ data: T | null; error: string | null }> => {
     setIsLoading(true);
     setError(null);
     
     try {
-      console.log(`Invoking function ${functionName} with method ${method}`, options?.body);
+      console.log(`Invoking function ${functionName} with method ${method}`);
       
       const { data, error } = await supabase.functions.invoke(functionName, {
         method,
         body: options?.body,
-        headers: {
-          ...options?.headers,
-          'Content-Type': 'application/json',
-        }
+        headers: options?.headers
       });
 
       if (error) {
         console.error(`Error invoking function ${functionName}:`, error);
-        setError(error.message || 'Unknown error calling function');
-        return { data: null, error: error.message || 'Unknown error calling function' };
+        setError(error.message);
+        return { data: null, error: error.message };
       }
 
       return { data, error: null };
@@ -48,10 +45,10 @@ export function useSupabaseFunctions() {
   };
 
   // Convenience methods for GET and POST
-  const get = <T = unknown>(functionName: string, options?: FunctionOptions) => 
+  const get = <T = any>(functionName: string, options?: FunctionOptions) => 
     invokeFunction<T>(functionName, 'GET', options);
   
-  const post = <T = unknown>(functionName: string, options?: FunctionOptions) => 
+  const post = <T = any>(functionName: string, options?: FunctionOptions) => 
     invokeFunction<T>(functionName, 'POST', options);
 
   return {
@@ -59,7 +56,6 @@ export function useSupabaseFunctions() {
     get,
     post,
     isLoading,
-    error,
-    clearError: () => setError(null)
+    error
   };
 } 

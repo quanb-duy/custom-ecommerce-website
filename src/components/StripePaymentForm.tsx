@@ -31,7 +31,7 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { post } = useSupabaseFunctions();
+  const { post: invokeFunction } = useSupabaseFunctions();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -48,7 +48,7 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
 
     try {
       // Create payment intent on the server
-      const { data: paymentIntentData, error: paymentIntentError } = await post(
+      const { data: paymentIntentData, error: paymentIntentError } = await invokeFunction(
         'create-payment-intent',
         {
           body: { 
@@ -58,8 +58,13 @@ const PaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: Pay
         }
       );
 
-      if (paymentIntentError || !paymentIntentData) {
-        throw new Error(paymentIntentError || 'Failed to create payment intent');
+      if (paymentIntentError) {
+        console.error('Error creating payment intent:', paymentIntentError);
+        throw new Error(typeof paymentIntentError === 'string' ? paymentIntentError : 'Failed to create payment intent');
+      }
+
+      if (!paymentIntentData?.clientSecret) {
+        throw new Error('No client secret returned');
       }
 
       // Confirm the card payment
