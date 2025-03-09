@@ -1,1 +1,1 @@
-web: node server.js 
+web: bash -c "[ -f \"$(which node)\" ] || (apt-get update && apt-get install -y nodejs) && node server.js" 
