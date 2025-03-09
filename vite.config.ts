@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       host: "0.0.0.0", // Listen on all network interfaces
-      port: 8000, // Match Railway's expected port
+      port: 8080, // Match Railway's actual port
     },
     plugins: [
       react(),

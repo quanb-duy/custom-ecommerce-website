@@ -3,5 +3,10 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfile": "./Dockerfile"
+  },
+  "deploy": {
+    "port": 8080,
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 10
   }
 } 
