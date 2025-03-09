@@ -1,4 +1,3 @@
-
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,17 +12,28 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // Log startup configuration
-console.log('Starting server with environment configuration:');
+console.log('===== SERVER STARTING =====');
+console.log(`Server version: ${new Date().toISOString()}`);
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`PORT: ${PORT}`);
+console.log(`__dirname: ${__dirname}`);
+console.log('==========================');
 
-// 1. Request logging for debugging
+// Define the dist path EARLY
+const distPath = path.join(__dirname, 'dist');
+console.log(`Static files path: ${distPath}`);
+
+// 1. Process JSON and URL-encoded bodies for API routes
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 2. Request logging for debugging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl || req.url}`);
   next();
 });
 
-// 2. CORS headers for all requests
+// 3. CORS headers for all requests
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -36,12 +46,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// 3. Health check endpoint (before static files)
+// 4. Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// 4. Debug endpoint to check environment variables
+// 5. Debug endpoint to check environment variables
 app.get('/debug-env', (req, res) => {
   // Only return non-sensitive variables
   const safeEnv = {
@@ -57,43 +67,30 @@ app.get('/debug-env', (req, res) => {
   res.json(safeEnv);
 });
 
-// Static file serving BEFORE API route handling
-// This must come BEFORE API and Supabase handling to prioritize static files
-const distPath = path.join(__dirname, 'dist');
+// 6. Serve static files - MUST be before any API or catch-all routes
 app.use(express.static(distPath));
 
-// 5. API routes with JSON parsing
-// This should come AFTER static files to prevent any conflicts
+// 7. API routes
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
-apiRouter.use(express.json());
-apiRouter.use(express.urlencoded({ extended: true }));
-
-// JSON parsing error handler for API routes
-apiRouter.use((err, req, res, next) => {
-  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    console.error('JSON parsing error:', err.message);
-    return res.status(400).json({ error: 'Invalid JSON in request body' });
-  }
-  next(err);
-});
 
 // Test API endpoint
 apiRouter.get('/test', (req, res) => {
   res.json({ status: 'API is working' });
 });
 
-// 6. Block direct access to Supabase edge function URLs
+// 8. Block direct access to Supabase edge function URLs
+// This prevents the browser from directly accessing these URLs
 app.all('/supabase/*', (req, res) => {
   return res.status(403).json({ 
     error: 'Direct access to Supabase functions is not allowed' 
   });
 });
 
-// 7. SPA fallback - serve index.html for all other routes
-// This MUST be after all other routes and static file serving
+// 9. Wildcard handler for SPA - ALL other routes go to index.html
+// This is CRUCIAL: ALL paths not explicitly handled should serve the React app
 app.get('*', (req, res) => {
-  console.log('Serving SPA fallback for:', req.originalUrl);
+  console.log(`SPA fallback triggered for: ${req.originalUrl}`);
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
@@ -105,5 +102,8 @@ app.use((err, req, res, next) => {
 
 // Start the server
 app.listen(PORT, '0.0.0.0', () => {
+  console.log(`===== SERVER RUNNING =====`);
   console.log(`Server running on http://0.0.0.0:${PORT}`);
+  console.log(`Static files being served from: ${distPath}`);
+  console.log(`==========================`);
 });
