@@ -1,3 +1,4 @@
+
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,8 +16,6 @@ const PORT = process.env.PORT || 8000;
 console.log('Starting server with environment configuration:');
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`PORT: ${PORT}`);
-
-// IMPORTANT: Add middleware in the correct order!
 
 // 1. Request logging for debugging
 app.use((req, res, next) => {
@@ -42,7 +41,29 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// 4. API routes with JSON parsing
+// 4. Debug endpoint to check environment variables
+app.get('/debug-env', (req, res) => {
+  // Only return non-sensitive variables
+  const safeEnv = {
+    NODE_ENV: process.env.NODE_ENV,
+    PORT: process.env.PORT,
+    // Check if variables exist without exposing values
+    HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
+    HAS_SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_PUBLIC_KEY,
+    HAS_VITE_PACKETA_API_KEY: !!process.env.VITE_PACKETA_API_KEY,
+    HAS_VITE_STRIPE_PUBLISHABLE_KEY: !!process.env.VITE_STRIPE_PUBLISHABLE_KEY
+  };
+  
+  res.json(safeEnv);
+});
+
+// Static file serving BEFORE API route handling
+// This must come BEFORE API and Supabase handling to prioritize static files
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+
+// 5. API routes with JSON parsing
+// This should come AFTER static files to prevent any conflicts
 const apiRouter = express.Router();
 app.use('/api', apiRouter);
 apiRouter.use(express.json());
@@ -62,20 +83,15 @@ apiRouter.get('/test', (req, res) => {
   res.json({ status: 'API is working' });
 });
 
-// 5. Block direct access to Supabase edge function URLs
+// 6. Block direct access to Supabase edge function URLs
 app.all('/supabase/*', (req, res) => {
   return res.status(403).json({ 
     error: 'Direct access to Supabase functions is not allowed' 
   });
 });
 
-// 6. Static file serving
-// This must come BEFORE the SPA fallback route
-const distPath = path.join(__dirname, 'dist');
-app.use(express.static(distPath));
-
 // 7. SPA fallback - serve index.html for all other routes
-// This MUST be after all other routes
+// This MUST be after all other routes and static file serving
 app.get('*', (req, res) => {
   console.log('Serving SPA fallback for:', req.originalUrl);
   res.sendFile(path.join(distPath, 'index.html'));
