@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -10,6 +9,35 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useCart } from '@/contexts/CartContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
+
+interface PickupPoint {
+  name: string;
+  address: string;
+  zip: string;
+  city: string;
+}
+
+interface ShippingAddress {
+  type?: 'packeta' | 'standard';
+  fullName: string;
+  phone?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
+  pickupPoint?: PickupPoint;
+}
+
+interface OrderItem {
+  id?: number;
+  product_id: number;
+  product_name: string;
+  product_price: number;
+  quantity: number;
+}
 
 interface OrderDetails {
   id: string | number;
@@ -18,10 +46,43 @@ interface OrderDetails {
   date: Date;
   shipping_method: string;
   total: number;
-  shipping_address: any;
+  shipping_address: ShippingAddress;
   tracking_number?: string;
-  items?: any[];
+  items?: OrderItem[];
 }
+
+interface LineItem {
+  id: string;
+  price?: {
+    unit_amount?: number;
+    product?: {
+      metadata?: {
+        product_id?: string;
+      };
+    };
+  };
+  description?: string;
+  quantity?: number;
+}
+
+// Convert ShippingAddress to Json format for database
+const toJsonFormat = (address: ShippingAddress): Json => {
+  return address as unknown as Json;
+};
+
+// Convert from Json to ShippingAddress
+const fromJsonFormat = (json: Json): ShippingAddress => {
+  // If json is a string, try to parse it
+  if (typeof json === 'string') {
+    try {
+      return JSON.parse(json) as ShippingAddress;
+    } catch {
+      return { fullName: '', type: 'standard' };
+    }
+  }
+  // If it's already an object, try to use it directly
+  return json as unknown as ShippingAddress;
+};
 
 const OrderConfirmation = () => {
   const navigate = useNavigate();
@@ -87,7 +148,7 @@ const OrderConfirmation = () => {
               date: new Date(orderData.created_at),
               shipping_method: orderData.shipping_method,
               total: orderData.total,
-              shipping_address: orderData.shipping_address,
+              shipping_address: fromJsonFormat(orderData.shipping_address),
               tracking_number: orderData.tracking_number,
               items: orderData.order_items
             });
@@ -156,7 +217,12 @@ const OrderConfirmation = () => {
     }
   };
 
-  const processPacketaOrder = async (orderData: any) => {
+  const processPacketaOrder = async (orderData: {
+    id: number;
+    shipping_address: Json;
+    order_items: OrderItem[];
+    payment_intent_id?: string;
+  }) => {
     setIsPacketaProcessing(true);
     
     try {
@@ -233,58 +299,80 @@ const OrderConfirmation = () => {
       
       // Check if this order already exists in our database
       if (data.order_id) {
-        // Get order details
-        const { data: orderData, error: orderError } = await supabase
-          .from('orders')
-          .select(`
-            id, 
-            status, 
-            total, 
-            shipping_method, 
-            shipping_address, 
-            payment_intent_id, 
-            tracking_number,
-            created_at,
-            order_items:order_items(
-              id, 
-              product_id, 
-              product_name, 
-              product_price, 
-              quantity
-            )
-          `)
-          .eq('id', data.order_id)
-          .single();
-        
-        if (orderError) {
-          throw new Error(`Error fetching order: ${orderError.message}`);
-        }
-        
-        setOrderDetails({
-          id: orderData.id,
-          status: orderData.status,
-          paymentMethod: 'Card',
-          date: new Date(orderData.created_at),
-          shipping_method: orderData.shipping_method,
-          total: orderData.total,
-          shipping_address: orderData.shipping_address,
-          tracking_number: orderData.tracking_number,
-          items: orderData.order_items
-        });
-        
-        // Process Packeta order
-        processPacketaOrder(orderData);
+        // If we have an order_id from the API, redirect to the order page with the order ID
+        navigate(`/order-confirmation?orderId=${data.order_id}`, { replace: true });
+        return; // Exit the function early since we're redirecting
       } else {
-        // For older sessions without order_id reference
-        setOrderDetails({
-          id: sessionId.substring(0, 8),
-          status: 'paid',
-          paymentMethod: 'Card',
-          date: new Date(),
-          shipping_method: 'standard',
-          total: data.session.amount_total / 100,
-          shipping_address: {}
-        });
+        // For older sessions without order_id reference, create a minimal order object
+        try {
+          // Parse shipping data if available or create empty object
+          const shippingAddress: ShippingAddress = data.session.shipping ? {
+            fullName: data.session.shipping.name || '',
+            addressLine1: data.session.shipping.address?.line1 || '',
+            addressLine2: data.session.shipping.address?.line2 || '',
+            city: data.session.shipping.address?.city || '',
+            state: data.session.shipping.address?.state || '',
+            zipCode: data.session.shipping.address?.postal_code || '',
+            country: data.session.shipping.address?.country || '',
+            type: 'standard'
+          } : {
+            fullName: '',
+            type: 'standard'
+          };
+          
+          // Create an order in the database using session data
+          const orderPayload = {
+            status: 'paid',
+            payment_intent_id: data.session.id,
+            total: data.session.amount_total / 100,
+            shipping_method: 'standard',
+            shipping_address: toJsonFormat(shippingAddress),
+            user_id: user?.id,
+            // Handle order items separately since they go into a different table
+            // We'll extract this to insert after the order is created
+          };
+          
+          // Create the order
+          const { data: createdOrder, error } = await supabase
+            .from('orders')
+            .insert(orderPayload)
+            .select('id')
+            .single();
+            
+          if (error) {
+            console.error('Error creating order from session:', error);
+            throw new Error('Could not create order from session data');
+          }
+          
+          if (createdOrder?.id) {
+            // Insert order items if we have line items
+            if (data.lineItems && data.lineItems.length > 0) {
+              const orderItems = data.lineItems.map((item: LineItem) => ({
+                order_id: createdOrder.id,
+                product_id: parseInt(item.price?.product?.metadata?.product_id || '0'),
+                product_name: item.description || '',
+                product_price: (item.price?.unit_amount || 0) / 100,
+                quantity: item.quantity || 1
+              }));
+              
+              // Insert the order items
+              const { error: itemsError } = await supabase
+                .from('order_items')
+                .insert(orderItems);
+                
+              if (itemsError) {
+                console.error('Error inserting order items:', itemsError);
+              }
+            }
+            
+            // Redirect to the order confirmation page with the new order ID
+            navigate(`/order-confirmation?orderId=${createdOrder.id}`, { replace: true });
+            return;
+          }
+        } catch (err) {
+          console.error('Error creating order:', err);
+          setError('Could not create order details. Please contact customer support.');
+        }
       }
     } catch (err) {
       console.error('Error processing Stripe session:', err);
