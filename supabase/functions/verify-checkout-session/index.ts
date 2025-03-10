@@ -112,12 +112,11 @@ serve(async (req) => {
       console.log(`Retrieving checkout session: ${sessionId}`);
       
       const session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ['line_items', 'customer', 'line_items.data.price.product']
+        expand: ['line_items', 'customer']
       });
 
       console.log(`Session status: ${session.status}`);
       console.log(`Payment status: ${session.payment_status}`);
-      console.log(`Metadata received:`, session.metadata);
       
       // Get line items to return product information
       const lineItems = await stripe.checkout.sessions.listLineItems(sessionId);
@@ -147,102 +146,72 @@ serve(async (req) => {
           const user_id = session.metadata?.user_id;
           
           if (!user_id) {
-            console.error('No user_id found in session metadata. Full metadata:', session.metadata);
-            // Don't try to create an order without a valid user_id
-          } else {
-            // Validate that user_id looks like a UUID before proceeding
-            // Simple UUID format check (not perfect but catches obvious issues)
-            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            if (!uuidPattern.test(user_id)) {
-              console.error(`Invalid user_id format: "${user_id}" - must be a valid UUID`);
-            } else {
-              // Extract shipping details from metadata
-              let shipping_address = {};
+            console.error('No user_id found in session metadata');
+            throw new Error('Missing user_id in session metadata');
+          }
+          
+          // Extract shipping details from metadata
+          let shipping_address = {};
+          try {
+            if (session.metadata?.shipping_address) {
+              shipping_address = JSON.parse(session.metadata.shipping_address);
+            }
+          } catch (e) {
+            console.error('Error parsing shipping_address:', e);
+            shipping_address = { error: 'Failed to parse shipping address' };
+          }
+          
+          // Create order in database
+          const { data: newOrder, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              user_id,
+              status: 'paid',
+              total: session.amount_total / 100,
+              shipping_method: session.metadata?.shipping_method || 'standard',
+              shipping_address,
+              payment_intent_id: session.payment_intent,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+          
+          if (orderError) {
+            console.error('Error creating order:', orderError);
+            throw new Error(`Failed to create order: ${orderError.message}`);
+          }
+          
+          order_id = newOrder.id;
+          console.log(`Created new order: ${order_id}`);
+          
+          // Create order items
+          if (lineItems && lineItems.data.length > 0) {
+            const orderItems = lineItems.data.map(item => {
+              // Try to extract product_id from metadata
+              let product_id = 0;
               try {
-                if (session.metadata?.shipping_address) {
-                  shipping_address = JSON.parse(session.metadata.shipping_address);
-                } else {
-                  console.warn('No shipping_address found in metadata, using empty object');
+                if (item.price?.product?.metadata?.product_id) {
+                  product_id = parseInt(item.price.product.metadata.product_id);
                 }
               } catch (e) {
-                console.error('Error parsing shipping_address:', e);
-                shipping_address = { error: 'Failed to parse shipping address' };
+                console.error('Error parsing product_id:', e);
               }
               
-              // Create order in database
-              const { data: newOrder, error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                  user_id,
-                  status: 'paid',
-                  total: session.amount_total / 100,
-                  shipping_method: session.metadata?.shipping_method || 'standard',
-                  shipping_address,
-                  payment_intent_id: session.payment_intent,
-                  created_at: new Date().toISOString()
-                })
-                .select()
-                .single();
+              return {
+                order_id,
+                product_id,
+                product_name: item.description || 'Product',
+                product_price: (item.price?.unit_amount || 0) / 100,
+                quantity: item.quantity || 1
+              };
+            });
+            
+            const { error: itemsError } = await supabase
+              .from('order_items')
+              .insert(orderItems);
               
-              if (orderError) {
-                console.error('Error creating order:', orderError);
-                console.error('Order data attempted:', {
-                  user_id,
-                  status: 'paid',
-                  total: session.amount_total / 100,
-                  shipping_method: session.metadata?.shipping_method || 'standard',
-                  shipping_address,
-                  payment_intent_id: session.payment_intent
-                });
-              } else {
-                order_id = newOrder.id;
-                console.log(`Created new order: ${order_id}`);
-                
-                // Create order items
-                if (lineItems && lineItems.data.length > 0) {
-                  const orderItems = lineItems.data.map(item => {
-                    // Try to extract product_id from metadata
-                    let product_id = null;
-                    try {
-                      if (item.price?.product?.metadata?.product_id) {
-                        const parsedId = parseInt(item.price.product.metadata.product_id);
-                        if (!isNaN(parsedId) && parsedId > 0) {
-                          product_id = parsedId;
-                        } else {
-                          console.warn(`Invalid product_id value: ${item.price.product.metadata.product_id}`);
-                        }
-                      } else {
-                        console.warn('No product_id found in metadata for item:', item.description);
-                      }
-                    } catch (e) {
-                      console.error('Error parsing product_id:', e);
-                    }
-                    
-                    return {
-                      order_id,
-                      product_id,
-                      product_name: item.description || 'Product',
-                      product_price: (item.price?.unit_amount || 0) / 100,
-                      quantity: item.quantity || 1
-                    };
-                  }).filter(item => item.product_id !== null);
-                  
-                  // Only insert items if we have valid product IDs
-                  if (orderItems.length > 0) {
-                    const { error: itemsError } = await supabase
-                      .from('order_items')
-                      .insert(orderItems);
-                      
-                    if (itemsError) {
-                      console.error('Error creating order items:', itemsError);
-                    } else {
-                      console.log(`Created ${orderItems.length} order items for order ${order_id}`);
-                    }
-                  } else {
-                    console.warn('No valid order items to create - all items had invalid product_id values');
-                  }
-                }
-              }
+            if (itemsError) {
+              console.error('Error creating order items:', itemsError);
             }
           }
         } catch (orderCreationError) {
@@ -262,7 +231,6 @@ serve(async (req) => {
             currency: session.currency,
             customer_email: session.customer_email,
             metadata: session.metadata,
-            payment_intent: session.payment_intent
           },
           lineItems: lineItems.data
         }), 

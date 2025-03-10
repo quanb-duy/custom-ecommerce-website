@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -44,31 +45,18 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
       if (valueRef.current) {
         valueRef.current.innerText = '';
         if (point) {
-          console.log("Selected Packeta point (raw data):", point);
+          console.log("Selected point", point);
           valueRef.current.innerText = "Address: " + (point.formatedValue || '');
-          
-          // Make sure we have a valid ID - this is critical for the Packeta API
-          const pointId = point.id || point.carrierId || '';
-          if (!pointId) {
-            console.error('No valid ID found in the Packeta point data:', point);
-            toast({
-              title: 'Pickup Point Error',
-              description: 'Could not retrieve a valid pickup point ID. Please try selecting a different location.',
-              variant: 'destructive',
-            });
-            return;
-          }
           
           // Transform the point data to match our interface
           const selectedPoint: PacketaPoint = {
-            id: pointId,
+            id: point.id || point.carrierId || 'unknown',
             name: point.name || 'Unknown Location',
             address: point.street || 'Unknown Address',
             zip: point.zip || 'Unknown Zip',
             city: point.city || 'Unknown City'
           };
           
-          console.log("Formatted pickup point with ID:", selectedPoint);
           onSelect(selectedPoint);
           toast({
             title: 'Pickup Point Selected',

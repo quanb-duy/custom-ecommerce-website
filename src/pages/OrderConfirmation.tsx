@@ -69,31 +69,17 @@ interface OrderData {
 
 // Helper function to convert Json to ShippingAddress
 const parseShippingAddress = (json: Json): ShippingAddress => {
-  if (!json) {
-    return { fullName: 'Unknown' };
-  }
-  
   if (typeof json === 'string') {
     try {
       return JSON.parse(json) as ShippingAddress;
     } catch (e) {
-      console.error('Error parsing shipping address from string:', e);
+      console.error('Error parsing shipping address:', e);
       return { fullName: 'Error parsing address' };
     }
   }
   
-  // If it's already an object (but might be a plain object, not ShippingAddress),
-  // ensure it has at least the required fields
-  if (typeof json === 'object' && json !== null) {
-    // If it's an object but missing fullName, add a default one
-    if (!('fullName' in json) && typeof json === 'object') {
-      return { ...json as object, fullName: 'Unknown Customer' } as ShippingAddress;
-    }
-    return json as unknown as ShippingAddress;
-  }
-  
-  // Fallback
-  return { fullName: 'Invalid address data' };
+  // If it's already an object, cast it
+  return json as unknown as ShippingAddress;
 };
 
 const OrderConfirmation = () => {
@@ -114,21 +100,9 @@ const OrderConfirmation = () => {
   const [sessionProcessed, setSessionProcessed] = useState(false);
   
   useEffect(() => {
-    // Check if we're processing a Stripe session but user is not authenticated
-    if (sessionId && !user) {
-      setIsLoading(false);
-      setError("Authentication required. Please sign in to view your order.");
-      return;
-    }
-    
     if (!user && !orderId && !sessionId) {
       navigate('/');
       return;
-    }
-    
-    // Set session as processed immediately to prevent infinite loops
-    if (sessionId) {
-      setSessionProcessed(true);
     }
     
     const fetchOrderDetails = async () => {
@@ -179,22 +153,12 @@ const OrderConfirmation = () => {
               items: orderData.order_items
             });
             
-            // Check if Packeta processing has already been attempted for this order
-            const orderKey = `packeta_attempted_${orderData.id}`;
-            const hasAttempted = sessionStorage.getItem(orderKey) === 'true';
-            
-            // If order status is 'pending' or 'paid', and no tracking number exists, and we haven't tried processing before
-            if (orderData.shipping_method === 'packeta' && 
-                (orderData.status === 'pending' || orderData.status === 'paid') && 
-                !orderData.tracking_number && !hasAttempted) {
+            // If order status is 'pending' or 'paid', and no tracking number exists,
+            // send to Packeta for shipping processing
+            if ((orderData.status === 'pending' || orderData.status === 'paid') && 
+                !orderData.tracking_number) {
               console.log('Order needs Packeta processing, initiating...');
-              
-              // Mark this order as attempted in sessionStorage
-              sessionStorage.setItem(orderKey, 'true');
-              
-              await processPacketaOrder(orderData);
-            } else if (hasAttempted && !orderData.tracking_number) {
-              console.log('Packeta processing already attempted for this order, skipping...');
+              processPacketaOrder(orderData);
             } else {
               console.log('Order already has tracking or is not in a processable state');
             }
@@ -272,56 +236,10 @@ const OrderConfirmation = () => {
         .eq('id', user?.id)
         .single();
       
-      // Ensure shipping_address is properly formatted
-      let shippingAddressData = orderData.shipping_address;
-      
-      // If it's a string, parse it
-      if (typeof shippingAddressData === 'string') {
-        try {
-          shippingAddressData = JSON.parse(shippingAddressData);
-          console.log('Parsed shipping address from string:', shippingAddressData);
-        } catch (e) {
-          console.error('Error parsing shipping address string:', e);
-        }
-      }
-      
-      // Manually structure the shipping address for Packeta if needed
-      if (!shippingAddressData.type && shippingAddressData.pickupPoint) {
-        console.log('Adding type=packeta to shipping address');
-        shippingAddressData = {
-          ...shippingAddressData,
-          type: 'packeta'
-        };
-      } else if (!shippingAddressData.type) {
-        console.log('No pickup point found, trying to create packeta shipping address from existing data');
-        // Try to find any pickup point data
-        const pickupPointData = findPickupPoint(shippingAddressData);
-        
-        if (pickupPointData) {
-          console.log('Found pickup point data:', pickupPointData);
-          shippingAddressData = {
-            type: 'packeta',
-            pickupPoint: pickupPointData,
-            fullName: shippingAddressData.fullName || userData?.email || user?.email || 'Customer',
-            phone: shippingAddressData.phone || ''
-          };
-        } else {
-          console.error('Cannot process Packeta order: No pickup point found in shipping address');
-          toast({
-            title: 'Processing Error',
-            description: 'Could not find pickup point information. Please contact support.',
-            variant: 'destructive',
-          });
-          return;
-        }
-      }
-      
-      console.log('Final shipping address for Packeta:', shippingAddressData);
-      
       const orderPayload = {
         order_id: orderData.id,
-        shipping_address: shippingAddressData,
-        items: orderData.order_items || [],
+        shipping_address: orderData.shipping_address,
+        items: orderData.order_items,
         user_id: user?.id,
         email: userData?.email || user?.email,
         payment_method: orderData.payment_intent_id ? 'card' : 'cod'
@@ -340,42 +258,15 @@ const OrderConfirmation = () => {
           description: 'Your order has been received, but there was a delay in shipping processing. Our team will handle it shortly.',
           variant: 'default',
         });
-        
-        // Update database to mark order as needing manual Packeta processing
-        const { error: updateError } = await supabase
-          .from('orders')
-          .update({
-            notes: `Packeta processing failed: ${error}`,
-            status: 'processing'
-          })
-          .eq('id', orderData.id);
-          
-        if (updateError) {
-          console.error('Error updating order status:', updateError);
-        }
       } else {
         console.log('Packeta order created:', data);
         
         // Update the order details with tracking information if available
-        if (data.packeta_id || data.barcode) {
+        if (data.packeta_id) {
           setOrderDetails(prev => prev ? {
             ...prev,
-            tracking_number: data.barcode || data.packeta_id
+            tracking_number: data.packeta_id
           } : null);
-          
-          // Refresh order data to get the updated tracking number
-          const { data: refreshedOrder } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('id', orderData.id)
-            .single();
-            
-          if (refreshedOrder && refreshedOrder.tracking_number) {
-            setOrderDetails(prev => prev ? {
-              ...prev,
-              tracking_number: refreshedOrder.tracking_number
-            } : null);
-          }
         }
         
         toast({
@@ -395,47 +286,9 @@ const OrderConfirmation = () => {
     }
   };
   
-  // Helper function to find a pickup point in a complex object
-  const findPickupPoint = (obj: any): PickupPoint | null => {
-    if (!obj) return null;
-    
-    // If the object itself has id, name, address properties, it might be a pickup point
-    if (obj.id && obj.name && (obj.address || obj.street)) {
-      return {
-        id: obj.id,
-        name: obj.name,
-        address: obj.address || obj.street,
-        zip: obj.zip,
-        city: obj.city
-      };
-    }
-    
-    // If it has a pickupPoint property
-    if (obj.pickupPoint) {
-      return obj.pickupPoint;
-    }
-    
-    // Recursively check all object properties
-    if (typeof obj === 'object') {
-      for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-          const found = findPickupPoint(obj[key]);
-          if (found) return found;
-        }
-      }
-    }
-    
-    return null;
-  };
-  
   const handleStripeSession = async (sessionId: string) => {
     try {
       console.log('Processing Stripe session:', sessionId);
-      
-      // Ensure user is authenticated
-      if (!user || !user.id) {
-        throw new Error("Authentication required to process your order");
-      }
       
       // Verify the session with Stripe
       const { data, error: verifyError } = await invokeFunction('verify-checkout-session', {
@@ -452,6 +305,9 @@ const OrderConfirmation = () => {
       
       console.log('Session verified:', data);
       
+      // Set flag to prevent infinite loop
+      setSessionProcessed(true);
+      
       // Clear the cart after successful payment
       clearCart();
       
@@ -464,38 +320,18 @@ const OrderConfirmation = () => {
       if (data.order_id) {
         // Redirect to the order confirmation page with the order ID
         // Use replace: true to prevent back button from causing an infinite loop
-        // Clear the session_id to prevent re-processing
-        const currentUrl = new URL(window.location.href);
-        currentUrl.searchParams.delete('session_id');
-        currentUrl.searchParams.set('orderId', data.order_id.toString());
-        navigate(currentUrl.pathname + currentUrl.search, { replace: true });
+        navigate(`/order-confirmation?orderId=${data.order_id}`, { replace: true });
       } else {
         // If no order_id was returned, we need to create one
         try {
-          console.log('No order_id returned from verification, attempting to create order', {
-            session: data.session,
-            lineItems: data.lineItems
-          });
-          
-          // Check if we have the necessary data
-          if (!user?.id) {
-            throw new Error('User not authenticated');
-          }
-          
-          if (!data.session?.payment_intent) {
-            console.warn('No payment_intent in session, using session ID as fallback');
-          }
-          
           // Prepare shipping address data
           let shippingAddress = {};
           if (data.session.metadata?.shipping_address) {
             try {
               shippingAddress = JSON.parse(data.session.metadata.shipping_address);
             } catch (e) {
-              console.error('Error parsing shipping address from metadata:', e);
+              console.error('Error parsing shipping address:', e);
             }
-          } else {
-            console.warn('No shipping_address in session metadata');
           }
           
           // Create order data
@@ -503,10 +339,8 @@ const OrderConfirmation = () => {
             shipping_address: shippingAddress,
             total: data.session.amount_total / 100,
             shipping_method: data.session.metadata?.shipping_method || 'standard',
-            status: 'paid',
+            payment_status: 'paid',
           };
-          
-          console.log('Creating order with data:', orderData);
           
           // Create order items from line items
           const orderItems = data.lineItems?.map(item => {
@@ -528,30 +362,22 @@ const OrderConfirmation = () => {
             };
           }) || [];
           
-          console.log('With order items:', orderItems);
-          
           // Call create-order function
           const { data: orderResult, error: orderError } = await invokeFunction('create-order', {
             body: {
               order_data: orderData,
               order_items: orderItems,
-              user_id: user.id,
+              user_id: user?.id,
               payment_intent_id: data.session.payment_intent || data.session.id
             }
           });
           
           if (orderError) {
-            console.error('create-order function error:', orderError);
             throw new Error(`Error creating order: ${orderError}`);
           }
           
-          console.log('Order created successfully:', orderResult);
-          
           // Redirect to the order confirmation page with the new order ID
-          const currentUrl = new URL(window.location.href);
-          currentUrl.searchParams.delete('session_id');
-          currentUrl.searchParams.set('orderId', orderResult.order_id.toString());
-          navigate(currentUrl.pathname + currentUrl.search, { replace: true });
+          navigate(`/order-confirmation?orderId=${orderResult.order_id}`, { replace: true });
         } catch (err) {
           console.error('Error creating order from session:', err);
           setError('Could not create order details. Please contact customer support.');

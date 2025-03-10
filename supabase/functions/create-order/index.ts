@@ -78,7 +78,7 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
-    // Parse request data
+    // Improved JSON parsing with error handling
     let requestData;
     try {
       const bodyText = await req.text();
@@ -120,38 +120,15 @@ serve(async (req) => {
     } = requestData;
 
     if (!order_data || !order_items || !user_id) {
-      console.error('Missing required fields in request:', {
-        has_order_data: !!order_data,
-        has_order_items: !!order_items,
-        has_user_id: !!user_id,
-        received_data: requestData
-      });
+      console.error('Missing required fields in request:',
+        !order_data ? 'order_data missing' : '',
+        !order_items ? 'order_items missing' : '',
+        !user_id ? 'user_id missing' : ''
+      );
       return new Response(
         JSON.stringify({ 
           error: 'Missing required fields',
-          missing: {
-            order_data: !order_data,
-            order_items: !order_items,
-            user_id: !user_id
-          },
           received: JSON.stringify(requestData)
-        }), 
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      )
-    }
-
-    // Validate that user_id is a valid UUID
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidPattern.test(user_id)) {
-      console.error(`Invalid user_id format: "${user_id}"`);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Invalid user_id format',
-          details: 'The user_id must be a valid UUID',
-          received: user_id
         }), 
         { 
           status: 400, 
@@ -163,7 +140,6 @@ serve(async (req) => {
     console.log(`Creating order for user: ${user_id}`)
     console.log(`Order items count: ${order_items.length}`)
     console.log(`Payment intent ID: ${payment_intent_id}`)
-    console.log('Order data:', order_data)
 
     // Handle manual payment mode
     const isManualPayment = payment_intent_id === 'manual-payment-required';
@@ -176,7 +152,7 @@ serve(async (req) => {
         ...order_data,
         user_id,
         payment_intent_id: isManualPayment ? null : payment_intent_id,
-        status: order_data.status || finalStatus // Use provided status or fallback to default
+        status: finalStatus
       })
       .select()
       .single()

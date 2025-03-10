@@ -69,17 +69,6 @@ const Checkout = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
   
-  useEffect(() => {
-    if (!user) {
-      toast({
-        title: "Authentication Required",
-        description: "Please sign in to proceed with checkout",
-        variant: "destructive",
-      });
-      navigate('/login?redirect=' + encodeURIComponent('/checkout'));
-    }
-  }, [user, navigate, toast]);
-  
   const [isLoading, setIsLoading] = useState(false);
   const [shippingMethod, setShippingMethod] = useState('standard');
   const [paymentMethod, setPaymentMethod] = useState('card');
@@ -333,12 +322,6 @@ const Checkout = () => {
     try {
       console.log('Creating order with payment ID:', paymentId);
       
-      if (shippingMethod === 'packeta' && !packetaPoint) {
-        setShowPacketaRequiredError(true);
-        window.scrollTo(0, 0);
-        throw new Error('Please select a pickup point');
-      }
-      
       const shippingAddressData = shippingMethod === 'packeta' 
         ? {
             type: 'packeta',
@@ -347,8 +330,6 @@ const Checkout = () => {
             phone: shippingAddress.phone || '',
           }
         : shippingAddress;
-      
-      console.log('Shipping address data for order:', shippingAddressData);
       
       const orderData = {
         shipping_address: shippingAddressData,
@@ -737,8 +718,6 @@ const Checkout = () => {
                         onPaymentError={handlePaymentError}
                         disabled={isLoading}
                         cartItems={cartItems}
-                        shippingAddress={shippingAddress}
-                        shippingMethod={shippingMethod}
                       />
                       
                       <div className="text-center mt-4">

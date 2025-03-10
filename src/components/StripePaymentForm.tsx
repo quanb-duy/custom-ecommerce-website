@@ -4,40 +4,16 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { CartItem } from '@/contexts/CartContext';
-import { useAuth } from '@/contexts/AuthContext';
-
-// Define the ShippingAddress type
-interface ShippingAddress {
-  fullName: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  state?: string;
-  zipCode?: string;
-  country?: string;
-  phone?: string;
-  type?: 'packeta' | 'standard';
-  pickupPoint?: {
-    id?: string;
-    name: string;
-    address: string;
-    zip: string;
-    city: string;
-  };
-}
 
 interface StripePaymentFormProps {
   amount: number;
   onPaymentSuccess: (paymentIntentId: string) => void;
   onPaymentError: (error: string) => void;
   disabled?: boolean;
-  cartItems?: CartItem[];
-  shippingAddress?: ShippingAddress; // Use the proper ShippingAddress type
-  shippingMethod?: string;
+  cartItems?: CartItem[]; // Use the proper CartItem type
 }
 
 interface CheckoutItem {
-  id?: string; // Add product ID
   name: string;
   description?: string;
   price: number;
@@ -50,30 +26,22 @@ export const StripePaymentForm = ({
   onPaymentSuccess, 
   onPaymentError, 
   disabled,
-  cartItems = [],
-  shippingAddress,
-  shippingMethod = 'standard'
+  cartItems = []
 }: StripePaymentFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { post: invokeFunction } = useSupabaseFunctions();
-  const { user } = useAuth(); // Get the current user
   
   const handleStripeCheckout = async () => {
     try {
       setIsLoading(true);
       setError(null);
       
-      if (!user || !user.id) {
-        throw new Error('User authentication is required for checkout');
-      }
-      
       console.log('Starting Stripe checkout process for amount:', amount);
       
       // Prepare checkout session items from cart items
       const items: CheckoutItem[] = cartItems.map(item => ({
-        id: item.product_id.toString(), // Include product_id for order item creation
         name: item.product.name,
         description: item.product.description?.substring(0, 100) || '',
         price: item.product.price,
@@ -91,16 +59,14 @@ export const StripePaymentForm = ({
         });
       }
       
-      // Create checkout session with proper metadata
+      // Create a checkout session
       const { data, error: sessionError } = await invokeFunction('create-checkout-session', {
         body: {
           items,
           success_url: `${window.location.origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/checkout?canceled=true`,
           metadata: {
-            user_id: user.id, // Always use a valid user ID
-            shipping_method: shippingMethod,
-            shipping_address: shippingAddress ? JSON.stringify(shippingAddress) : ''
+            order_id: new Date().getTime().toString() // We'll replace this with a real order ID later
           }
         }
       });
