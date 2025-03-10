@@ -1,74 +1,94 @@
-import React, { useState, useEffect } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
-
-// Initialize Stripe with the publishable key with fallback
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-console.log('Stripe key available:', !!stripeKey);
-const stripePromise = stripeKey 
-  ? loadStripe(stripeKey)
-  : Promise.resolve(null);
+import { CartItem } from '@/contexts/CartContext';
 
 interface StripePaymentFormProps {
   amount: number;
   onPaymentSuccess: (paymentIntentId: string) => void;
   onPaymentError: (error: string) => void;
   disabled?: boolean;
+  cartItems?: CartItem[]; // Use the proper CartItem type
 }
 
-export const StripePaymentForm = ({ amount, onPaymentSuccess, onPaymentError, disabled }: StripePaymentFormProps) => {
+interface CheckoutItem {
+  name: string;
+  description?: string;
+  price: number;
+  quantity: number;
+  images?: string[];
+}
+
+export const StripePaymentForm = ({ 
+  amount, 
+  onPaymentSuccess, 
+  onPaymentError, 
+  disabled,
+  cartItems = []
+}: StripePaymentFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { post: invokeFunction } = useSupabaseFunctions();
   
-  const handleRedirectToStripe = async () => {
+  const handleStripeCheckout = async () => {
     try {
       setIsLoading(true);
       setError(null);
       
-      console.log('Creating Stripe checkout session for amount:', amount);
+      console.log('Starting Stripe checkout process for amount:', amount);
       
-      // Create a checkout session via the server
+      // Prepare checkout session items from cart items
+      const items: CheckoutItem[] = cartItems.map(item => ({
+        name: item.product.name,
+        description: item.product.description?.substring(0, 100) || '',
+        price: item.product.price,
+        quantity: item.quantity,
+        images: item.product.image ? [item.product.image] : undefined
+      }));
+      
+      // If no cart items, use a fallback item
+      if (items.length === 0) {
+        items.push({
+          name: 'Order Payment',
+          description: 'Payment for your order',
+          price: amount,
+          quantity: 1
+        });
+      }
+      
+      // Create a checkout session
       const { data, error: sessionError } = await invokeFunction('create-checkout-session', {
         body: {
-          amount: Math.round(amount * 100), // Convert to cents
-          currency: 'usd',
-          success_url: `${window.location.origin}/order-success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${window.location.origin}/checkout?canceled=true`
+          items,
+          success_url: `${window.location.origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${window.location.origin}/checkout?canceled=true`,
+          metadata: {
+            order_id: new Date().getTime().toString() // We'll replace this with a real order ID later
+          }
         }
       });
       
       if (sessionError) {
+        console.error('Session creation error:', sessionError);
         throw new Error(sessionError);
       }
       
-      if (!data?.sessionId) {
-        throw new Error('No session ID returned from server');
+      if (!data?.url) {
+        console.error('No checkout URL returned:', data);
+        throw new Error('No checkout URL returned from server');
       }
       
-      console.log('Created checkout session:', data.sessionId);
+      console.log('Redirecting to Stripe checkout:', data.url);
       
-      // When the customer clicks on the button, redirect them to Checkout.
-      const stripe = await stripePromise;
-      if (!stripe) {
-        throw new Error('Failed to load Stripe');
-      }
-      
-      const { error: redirectError } = await stripe.redirectToCheckout({
-        sessionId: data.sessionId
-      });
-      
-      if (redirectError) {
-        throw new Error(redirectError.message || 'Unknown error');
-      }
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-      console.error('Error redirecting to Stripe:', err);
+      console.error('Error with Stripe checkout:', err);
       setError(errorMessage);
       onPaymentError(errorMessage);
       toast({
@@ -76,12 +96,11 @@ export const StripePaymentForm = ({ amount, onPaymentSuccess, onPaymentError, di
         description: errorMessage,
         variant: 'destructive'
       });
-    } finally {
       setIsLoading(false);
     }
   };
   
-  // Option for manual payment if Stripe isn't available
+  // Fallback manual payment option
   const handleManualPayment = () => {
     console.log('Using manual payment option');
     onPaymentSuccess('manual-payment-required');
@@ -95,16 +114,19 @@ export const StripePaymentForm = ({ amount, onPaymentSuccess, onPaymentError, di
         </Alert>
       )}
       
-      <div className="p-4 bg-gray-50 rounded-md mb-4">
-        <p className="text-sm text-gray-600">
-          When you click "Pay with Stripe", you'll be redirected to Stripe's secure checkout page.
+      <div className="p-4 bg-blue-50 rounded-md mb-4 border border-blue-200">
+        <p className="text-sm text-blue-700 font-medium">
+          Secure Payment
+        </p>
+        <p className="text-sm text-blue-600 mt-1">
+          You'll be redirected to Stripe's secure payment page to complete your purchase.
         </p>
       </div>
       
       <Button 
-        onClick={handleRedirectToStripe}
-        disabled={isLoading || disabled || !stripeKey}
-        className="w-full"
+        onClick={handleStripeCheckout}
+        disabled={isLoading || disabled}
+        className="w-full bg-blue-600 hover:bg-blue-700"
       >
         {isLoading ? (
           <div className="flex items-center justify-center">
@@ -116,7 +138,7 @@ export const StripePaymentForm = ({ amount, onPaymentSuccess, onPaymentError, di
         )}
       </Button>
       
-      <div className="text-center mt-2">
+      <div className="text-center mt-4">
         <button 
           onClick={handleManualPayment}
           className="text-gray-500 hover:text-gray-700 text-sm"

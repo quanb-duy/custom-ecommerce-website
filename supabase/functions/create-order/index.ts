@@ -14,6 +14,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Create-order function invoked');
+    
     // Handle GET requests differently than POST requests
     if (req.method === "GET") {
       return new Response(
@@ -137,15 +139,20 @@ serve(async (req) => {
 
     console.log(`Creating order for user: ${user_id}`)
     console.log(`Order items count: ${order_items.length}`)
+    console.log(`Payment intent ID: ${payment_intent_id}`)
 
+    // Handle manual payment mode
+    const isManualPayment = payment_intent_id === 'manual-payment-required';
+    const finalStatus = isManualPayment ? 'pending' : (payment_intent_id ? 'paid' : 'pending');
+    
     // Start a transaction to ensure both order and items are created
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
         ...order_data,
         user_id,
-        payment_intent_id,
-        status: payment_intent_id ? 'paid' : 'pending'
+        payment_intent_id: isManualPayment ? null : payment_intent_id,
+        status: finalStatus
       })
       .select()
       .single()
@@ -189,7 +196,9 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        order_id: order.id
+        order_id: order.id,
+        status: finalStatus,
+        payment_mode: isManualPayment ? 'manual' : 'online'
       }), 
       { 
         status: 200, 

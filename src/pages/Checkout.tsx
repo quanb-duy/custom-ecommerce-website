@@ -584,6 +584,7 @@ const Checkout = () => {
                         onPaymentSuccess={handlePaymentSuccess}
                         onPaymentError={handlePaymentError}
                         disabled={isLoading}
+                        cartItems={cartItems}
                       />
                       
                       <div className="text-center mt-4">

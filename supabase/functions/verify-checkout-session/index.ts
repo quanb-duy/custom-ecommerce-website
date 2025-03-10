@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Create checkout session function invoked');
+    console.log('Verify checkout session function invoked');
     
     // Get API key from Supabase secrets
     const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
@@ -22,7 +22,7 @@ serve(async (req) => {
       console.error('STRIPE_SECRET_KEY is not set in Supabase secrets')
       return new Response(
         JSON.stringify({ 
-          error: 'Payment service is temporarily unavailable', 
+          error: 'Service temporarily unavailable', 
           code: 'missing_api_key'
         }), 
         { 
@@ -46,7 +46,7 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             error: 'Empty request body', 
-            message: 'Please provide checkout details in the request body' 
+            message: 'Please provide session ID in the request body' 
           }), 
           { 
             status: 400, 
@@ -71,18 +71,13 @@ serve(async (req) => {
       )
     }
 
-    const { 
-      items,
-      success_url, 
-      cancel_url,
-      metadata = {}
-    } = requestData;
+    const { sessionId } = requestData;
 
-    if (!items || !success_url || !cancel_url) {
+    if (!sessionId) {
       return new Response(
         JSON.stringify({ 
-          error: 'Missing required fields',
-          message: 'items, success_url, and cancel_url are required'
+          error: 'Missing session ID',
+          message: 'Session ID is required'
         }), 
         { 
           status: 400, 
@@ -91,38 +86,31 @@ serve(async (req) => {
       )
     }
 
-    // Create Stripe Checkout Session
+    // Retrieve the session from Stripe
     try {
-      console.log('Creating checkout session...');
+      console.log(`Retrieving checkout session: ${sessionId}`);
       
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: items.map((item: any) => ({
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: item.name,
-              description: item.description || undefined,
-              images: item.images || undefined,
-            },
-            unit_amount: Math.round(item.price * 100), // Convert to cents
-          },
-          quantity: item.quantity || 1,
-        })),
-        mode: 'payment',
-        success_url: success_url,
-        cancel_url: cancel_url,
-        metadata: metadata,
-      });
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-      console.log(`Checkout session created: ${session.id}`);
-      console.log(`Checkout URL: ${session.url}`);
+      console.log(`Session status: ${session.status}`);
+      console.log(`Payment status: ${session.payment_status}`);
+      
+      // Get line items to return product information
+      const lineItems = await stripe.checkout.sessions.listLineItems(sessionId);
       
       return new Response(
         JSON.stringify({ 
           success: true,
-          sessionId: session.id,
-          url: session.url
+          session: {
+            id: session.id,
+            status: session.status,
+            payment_status: session.payment_status,
+            amount_total: session.amount_total,
+            currency: session.currency,
+            customer_email: session.customer_email,
+            metadata: session.metadata,
+          },
+          lineItems: lineItems.data
         }), 
         { 
           status: 200, 
@@ -133,7 +121,7 @@ serve(async (req) => {
       console.error('Stripe API error:', stripeError);
       return new Response(
         JSON.stringify({ 
-          error: 'Payment processing error', 
+          error: 'Failed to retrieve session', 
           details: stripeError.message
         }), 
         { 
@@ -143,7 +131,7 @@ serve(async (req) => {
       )
     }
   } catch (error) {
-    console.error('Error creating checkout session:', error);
+    console.error('Error verifying checkout session:', error);
     return new Response(
       JSON.stringify({ 
         error: error.message || 'An unexpected error occurred',
