@@ -100,12 +100,6 @@ export const StripePaymentForm = ({
     }
   };
   
-  // Fallback manual payment option
-  const handleManualPayment = () => {
-    console.log('Using manual payment option');
-    onPaymentSuccess('manual-payment-required');
-  };
-  
   return (
     <div className="space-y-4">
       {error && (
@@ -137,16 +131,6 @@ export const StripePaymentForm = ({
           `Pay with Stripe $${amount.toFixed(2)}`
         )}
       </Button>
-      
-      <div className="text-center mt-4">
-        <button 
-          onClick={handleManualPayment}
-          className="text-gray-500 hover:text-gray-700 text-sm"
-          disabled={isLoading || disabled}
-        >
-          Continue with Order (Manual Payment)
-        </button>
-      </div>
     </div>
   );
 };
