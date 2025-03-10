@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@12.0.0"
 
@@ -119,13 +120,28 @@ serve(async (req) => {
       )
     } catch (stripeError) {
       console.error('Stripe API error:', stripeError);
+      
+      // Check if this is an invalid session ID error
+      if (stripeError.message && stripeError.message.includes('No such checkout.session')) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid session ID', 
+            details: 'The provided session ID does not exist or has expired'
+          }), 
+          { 
+            status: 404, 
+            headers: { ...corsHeaders, "Content-Type": "application/json" } 
+          }
+        )
+      }
+      
       return new Response(
         JSON.stringify({ 
           error: 'Failed to retrieve session', 
           details: stripeError.message
         }), 
         { 
-          status: 422, 
+          status: 500, 
           headers: { ...corsHeaders, "Content-Type": "application/json" } 
         }
       )
@@ -143,4 +159,4 @@ serve(async (req) => {
       }
     )
   }
-}) 
+})

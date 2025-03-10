@@ -38,6 +38,7 @@ const OrderConfirmation = () => {
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isPacketaProcessing, setIsPacketaProcessing] = useState(false);
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
+  const [sessionProcessed, setSessionProcessed] = useState(false);
   
   useEffect(() => {
     if (!user && !orderId && !sessionId) {
@@ -102,7 +103,7 @@ const OrderConfirmation = () => {
           }
         }
         // Handle Stripe session
-        else if (sessionId) {
+        else if (sessionId && !sessionProcessed) {
           await handleStripeSession(sessionId);
         } else {
           throw new Error('No order information provided');
@@ -116,7 +117,7 @@ const OrderConfirmation = () => {
     };
     
     fetchOrderDetails();
-  }, [orderId, sessionId, user, navigate, clearCart, toast]);
+  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed]);
 
   const requestTracking = async () => {
     if (!orderDetails || !user) return;
@@ -218,6 +219,9 @@ const OrderConfirmation = () => {
       }
       
       console.log('Session verified:', data);
+      
+      // Set flag to prevent infinite loop
+      setSessionProcessed(true);
       
       // Clear the cart after successful payment
       clearCart();
