@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -21,53 +22,80 @@ interface PacketaWidgetPoint {
   formatedValue?: string;
 }
 
-interface PacketaWidgetOptions {
-  country: string;
-  language: string;
-  valueFormat: string;
-  view: string;
-  vendors: Array<{
-    country: string;
-    group: string;
-    selected: boolean;
-  }>;
-  defaultCurrency: string;
-  defaultPrice: string;
-}
-
-interface PacketaWidget {
-  Widget: {
-    pick: (
-      apiKey: string,
-      callback: (point: PacketaWidgetPoint | null) => void,
-      options: PacketaWidgetOptions
-    ) => void;
-  };
-}
-
-declare global {
-  interface Window {
-    Packeta?: PacketaWidget;
-    packetaOptions?: PacketaWidgetOptions;
-    packetaApiKey?: string;
-    showSelectedPickupPoint?: (point: PacketaWidgetPoint | null) => void;
-  }
-}
-
 interface PacketaPickupWidgetProps {
   onSelect: (point: PacketaPoint) => void;
   selectedPoint?: PacketaPoint | null;
 }
+
+// Use constant value from documentation
+const PACKETA_API_KEY = '6a7673943d8ec270';
 
 const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetProps) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const valueRef = useRef<HTMLDivElement>(null);
+  const [isWidgetReady, setIsWidgetReady] = useState(false);
 
+  // Setup global function and options for Packeta
   useEffect(() => {
-    // Load the Packeta widget script
-    if (!window.Packeta && !document.getElementById('packeta-widget-script')) {
+    // Define the callback function for Packeta
+    window.showSelectedPickupPoint = (point: any) => {
+      if (valueRef.current) {
+        valueRef.current.innerText = '';
+        if (point) {
+          console.log("Selected point", point);
+          valueRef.current.innerText = "Address: " + (point.formatedValue || '');
+          
+          // Transform the point data to match our interface
+          const selectedPoint: PacketaPoint = {
+            id: point.id || point.carrierId || 'unknown',
+            name: point.name || 'Unknown Location',
+            address: point.street || 'Unknown Address',
+            zip: point.zip || 'Unknown Zip',
+            city: point.city || 'Unknown City'
+          };
+          
+          onSelect(selectedPoint);
+          toast({
+            title: 'Pickup Point Selected',
+            description: `${selectedPoint.name}, ${selectedPoint.address}`,
+          });
+        }
+      }
+    };
+
+    // Set the Packeta options according to the documentation
+    window.packetaOptions = {
+      country: "cz", 
+      language: "cs", 
+      valueFormat: "\"Packeta\",id,carrierId,carrierPickupPointId,name,city,street", 
+      view: "modal", 
+      vendors: [
+        { 
+          country: "cz", 
+          group: "zbox", 
+          selected: true
+        }
+      ], 
+      defaultCurrency: "usd", 
+      defaultPrice: "100"
+    };
+
+    // Store API key in global object as per Packeta's example
+    window.packetaApiKey = PACKETA_API_KEY;
+
+    return () => {
+      // Cleanup global properties when component unmounts
+      delete window.showSelectedPickupPoint;
+      delete window.packetaOptions;
+      delete window.packetaApiKey;
+    };
+  }, [onSelect, toast]);
+
+  // Load Packeta widget script
+  useEffect(() => {
+    if (!document.getElementById('packeta-widget-script')) {
       const script = document.createElement('script');
       script.id = 'packeta-widget-script';
       script.src = 'https://widget.packeta.com/v6/www/js/library.js';
@@ -76,53 +104,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
       script.onload = () => {
         console.log('Packeta widget script loaded successfully');
         setLoading(false);
-        
-        // Initialize Packeta options after script loads
-        const packetaOptions: PacketaWidgetOptions = {
-          country: "cz", 
-          language: "cs", 
-          valueFormat: "\"Packeta\",id,carrierId,carrierPickupPointId,name,city,street", 
-          view: "modal", 
-          vendors: [
-            { 
-              country: "cz", 
-              group: "zbox", 
-              selected: true
-            }
-          ], 
-          defaultCurrency: "usd", 
-          defaultPrice: "100"
-        };
-
-        // Define the callback function
-        window.showSelectedPickupPoint = (point: PacketaWidgetPoint | null) => {
-          if (valueRef.current) {
-            valueRef.current.innerText = '';
-            if (point) {
-              console.log("Selected point", point);
-              valueRef.current.innerText = "Address: " + (point.formatedValue || '');
-              
-              // Transform the point data to match our interface
-              const selectedPoint: PacketaPoint = {
-                id: point.id || point.carrierId || 'unknown',
-                name: point.name || 'Unknown Location',
-                address: point.street || 'Unknown Address',
-                zip: point.zip || 'Unknown Zip',
-                city: point.city || 'Unknown City'
-              };
-              
-              onSelect(selectedPoint);
-              toast({
-                title: 'Pickup Point Selected',
-                description: `${selectedPoint.name}, ${selectedPoint.address}`,
-              });
-            }
-          }
-        };
-
-        // Store options and API key in window object as per Packeta's example
-        window.packetaOptions = packetaOptions;
-        window.packetaApiKey = import.meta.env.VITE_PACKETA_API_KEY;
+        setIsWidgetReady(true);
       };
       
       script.onerror = (e) => {
@@ -133,16 +115,19 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
       
       setLoading(true);
       document.body.appendChild(script);
+    } else {
+      setIsWidgetReady(true);
     }
-  }, [onSelect, toast]);
+  }, []);
 
   const openPacketaWidget = () => {
     try {
-      if (!window.Packeta || !window.packetaApiKey || !window.packetaOptions || !window.showSelectedPickupPoint) {
-        throw new Error('Packeta widget not loaded');
+      // Check if Packeta is defined in the global window object
+      if (typeof window.Packeta === 'undefined') {
+        throw new Error('Packeta widget not loaded yet');
       }
 
-      // Use the exact code from Packeta's example
+      // Using the direct approach from documentation
       window.Packeta.Widget.pick(
         window.packetaApiKey,
         window.showSelectedPickupPoint,
@@ -171,7 +156,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
       <button 
         className="packeta-selector-open w-full px-4 py-2 border rounded-md hover:bg-gray-50"
         onClick={openPacketaWidget}
-        disabled={loading}
+        disabled={loading || !isWidgetReady}
       >
         {loading ? (
           <div className="flex items-center justify-center">
@@ -196,5 +181,15 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
     </div>
   );
 };
+
+// Add these global declarations to make TypeScript happy
+declare global {
+  interface Window {
+    Packeta: any;
+    packetaOptions: any;
+    packetaApiKey: string;
+    showSelectedPickupPoint: (point: any) => void;
+  }
+}
 
 export default PacketaPickupWidget;
