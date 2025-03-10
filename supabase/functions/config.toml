@@ -1,4 +1,3 @@
-
 project_id = "owigcjycsaxmpsthjbrh"
 
 [functions.create-payment-intent]
@@ -8,4 +7,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.create-order]
+verify_jwt = true
+
+[functions.create-checkout-session]
 verify_jwt = true

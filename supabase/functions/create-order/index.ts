@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -40,8 +39,26 @@ serve(async (req) => {
       )
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || 'https://owigcjycsaxmpsthjbrh.supabase.co'
+    // Get Supabase credentials from environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    
+    console.log('Supabase URL available:', !!supabaseUrl);
+    console.log('Supabase Service Key available:', !!supabaseServiceKey);
+    
+    if (!supabaseUrl) {
+      console.error('SUPABASE_URL is required but not set in Supabase secrets');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Service temporarily unavailable', 
+          details: 'Missing Supabase URL'
+        }), 
+        { 
+          status: 503, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
     
     if (!supabaseServiceKey) {
       console.error('SUPABASE_SERVICE_ROLE_KEY is required but not set in Supabase secrets')
@@ -101,6 +118,11 @@ serve(async (req) => {
     } = requestData;
 
     if (!order_data || !order_items || !user_id) {
+      console.error('Missing required fields in request:',
+        !order_data ? 'order_data missing' : '',
+        !order_items ? 'order_items missing' : '',
+        !user_id ? 'user_id missing' : ''
+      );
       return new Response(
         JSON.stringify({ 
           error: 'Missing required fields',

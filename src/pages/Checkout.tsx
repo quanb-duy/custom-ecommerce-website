@@ -11,7 +11,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { ShoppingCart, Check, CreditCard, Truck, AlertCircle } from 'lucide-react';
-import StripePaymentForm from '@/components/StripePaymentForm';
+import { StripePaymentForm } from '@/components/StripePaymentForm';
 import PacketaPickupWidget from '@/components/PacketaPickupWidget';
 import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -46,9 +46,9 @@ interface ValidationErrors {
 }
 
 const Checkout = () => {
+  const navigate = useNavigate();
   const { cartItems, cartTotal, totalItems, subtotal } = useCart();
   const { user } = useAuth();
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [shippingMethod, setShippingMethod] = useState('standard');
@@ -98,6 +98,28 @@ const Checkout = () => {
       setPacketaPoint(null);
     }
   }, [shippingMethod]);
+
+  // Handle URL params for Stripe redirect
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    const sessionId = queryParams.get('session_id');
+    const canceled = queryParams.get('canceled');
+    
+    if (sessionId) {
+      // Payment was successful, create the order
+      console.log('Payment successful, session ID:', sessionId);
+      handlePaymentSuccess(sessionId);
+    }
+    
+    if (canceled) {
+      // Payment was canceled
+      toast({
+        title: "Payment Canceled",
+        description: "Your payment was canceled. You can try again or choose a different payment method.",
+        variant: "destructive",
+      });
+    }
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -217,6 +239,8 @@ const Checkout = () => {
     setIsLoading(true);
     
     try {
+      console.log('Creating order with payment ID:', paymentId);
+      
       const shippingAddressData = shippingMethod === 'packeta' 
         ? {
             type: 'packeta',
@@ -240,6 +264,8 @@ const Checkout = () => {
         quantity: item.quantity
       }));
       
+      console.log('Sending order data:', { orderData, orderItems, user_id: user.id, payment_intent_id: paymentId });
+      
       const { data, error } = await invokeFunction('create-order', {
         body: {
           order_data: orderData,
@@ -254,17 +280,19 @@ const Checkout = () => {
         throw new Error(`Error creating order: ${error}`);
       }
       
+      console.log('Order created successfully:', data);
+      
       toast({
         title: "Order placed successfully!",
         description: "Thank you for your purchase.",
       });
       
       navigate('/order-confirmation');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating order:', error);
       toast({
         title: "Order creation failed",
-        description: error.message || "There was an error processing your order",
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
         variant: "destructive",
       });
     } finally {

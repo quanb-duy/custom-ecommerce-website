@@ -25,6 +25,7 @@ interface CartContextType {
   addToCart: (productId: number, quantity?: number) => Promise<void>;
   removeFromCart: (cartItemId: number) => Promise<void>;
   updateQuantity: (cartItemId: number, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
   isLoading: boolean;
   cartTotal: number;
   subtotal: number;
@@ -257,11 +258,43 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const clearCart = async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      
+      const { error } = await supabase
+        .from('cart_items')
+        .delete()
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      setCartItems([]);
+      
+      toast({
+        title: "Cart cleared",
+        description: "All items have been removed from your cart",
+      });
+    } catch (error: any) {
+      console.error('Error clearing cart:', error.message);
+      toast({
+        title: "Failed to clear cart",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const value = {
     cartItems,
     addToCart,
     removeFromCart,
     updateQuantity,
+    clearCart,
     isLoading,
     cartTotal,
     subtotal,

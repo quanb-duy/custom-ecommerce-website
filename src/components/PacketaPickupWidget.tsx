@@ -32,6 +32,7 @@ interface PacketaWidgetOptions {
   defaultExpanded: boolean;
   apiKey: string;
   showInfo: boolean;
+  invoiceLocale?: string;
   callback: (point: PacketaWidgetCallbackPoint) => void;
 }
 
@@ -60,19 +61,23 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   // Load the Packeta widget script
   useEffect(() => {
     if (!window.Packeta && !document.getElementById('packeta-widget-script')) {
+      console.log('Loading Packeta widget script...');
       const script = document.createElement('script');
       script.id = 'packeta-widget-script';
-      script.src = 'https://widget.packeta.com/v6/www/js/packeta.js';
+      // Use the official URL from Packeta documentation
+      script.src = 'https://widget.packeta.com/v6/www/js/libpacketa.js';
       script.async = true;
       script.onload = () => {
+        console.log('Packeta widget script loaded successfully');
         setWidgetLoaded(true);
       };
-      script.onerror = () => {
-        setError('Failed to load Packeta widget script');
-        console.error('Failed to load Packeta widget script');
+      script.onerror = (e) => {
+        console.error('Failed to load Packeta widget script:', e);
+        setError('Failed to load Packeta widget script. Please try again later.');
       };
       document.body.appendChild(script);
     } else if (window.Packeta) {
+      console.log('Packeta widget already loaded');
       setWidgetLoaded(true);
     }
   }, []);
@@ -143,16 +148,19 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   const openPacketaWidget = () => {
     if (widgetLoaded && window.Packeta) {
       try {
+        console.log('Opening Packeta widget with API key:', import.meta.env.VITE_PACKETA_API_KEY ? 'Available' : 'Not available');
+        
         if (!widgetRef.current) {
           widgetRef.current = new window.Packeta.Widget({
             appIdentity: 'EcommerceShop',
-            language: 'en',
-            country: 'US', // Change according to your default country
+            language: 'en_GB', // Set API locale to en_GB as specified
+            country: 'CZ',     // Czech Republic
             defaultExpanded: true,
-            // Use the API key from environment variables
             apiKey: import.meta.env.VITE_PACKETA_API_KEY || '',
+            invoiceLocale: 'cs_CZ', // Set invoice locale to cs_CZ as specified
             showInfo: true,
             callback: (point: PacketaWidgetCallbackPoint) => {
+              console.log('Packeta point selected:', point);
               // Process the selected pickup point
               const selectedPoint: PacketaPoint = {
                 id: point.id || 'unknown-id',
@@ -172,8 +180,8 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
         
         widgetRef.current.open();
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         console.error('Error opening Packeta widget:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         setError('Error opening Packeta widget: ' + errorMessage);
         toast({
           title: 'Widget error',
@@ -182,6 +190,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
         });
       }
     } else {
+      console.error('Packeta widget not ready. Widget loaded:', widgetLoaded, 'Packeta available:', !!window.Packeta);
       toast({
         title: 'Widget not ready',
         description: 'Please wait while we load the pickup points widget or select from the list below.',
