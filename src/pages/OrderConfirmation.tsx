@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -41,6 +40,20 @@ const OrderConfirmation = () => {
   const [sessionProcessed, setSessionProcessed] = useState(false);
   
   useEffect(() => {
+    console.log('OrderConfirmation mounted with params:', { orderId, sessionId, user: !!user });
+    
+    // If we have a session ID, mark it as processed immediately to prevent infinite loops
+    if (sessionId) {
+      setSessionProcessed(true);
+    }
+    
+    // Check if we're processing a Stripe session but user is not authenticated
+    if (sessionId && !user) {
+      setIsLoading(false);
+      setError("Authentication required. Please sign in to view your order.");
+      return;
+    }
+    
     if (!user && !orderId && !sessionId) {
       navigate('/');
       return;
@@ -52,6 +65,7 @@ const OrderConfirmation = () => {
       try {
         // Try fetching the order from the orderId in URL parameters
         if (orderId) {
+          console.log(`Fetching order details for order ID: ${orderId}`);
           const { data: orderData, error: orderError } = await supabase
             .from('orders')
             .select(`
@@ -80,6 +94,8 @@ const OrderConfirmation = () => {
           }
           
           if (orderData) {
+            console.log('Order data retrieved:', orderData);
+            
             setOrderDetails({
               id: orderData.id,
               status: orderData.status,
@@ -92,10 +108,9 @@ const OrderConfirmation = () => {
               items: orderData.order_items
             });
             
-            // If order status is 'pending' or 'paid', send to Packeta
-            if ((orderData.status === 'pending' || orderData.status === 'paid') && 
-                !orderData.tracking_number) {
-              processPacketaOrder(orderData);
+            // If this is a Packeta order without a tracking number, process it
+            if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
+              await processPacketaOrder(orderData);
             }
             
             // Clear the cart after successful order fetch
@@ -103,9 +118,13 @@ const OrderConfirmation = () => {
           }
         }
         // Handle Stripe session
-        else if (sessionId && !sessionProcessed) {
+        else if (sessionId && user && !sessionProcessed) {
+          console.log(`Processing Stripe session: ${sessionId}`);
           await handleStripeSession(sessionId);
-        } else {
+        } 
+        // No order info
+        else if (!orderId && !sessionId) {
+          console.error('No order information provided');
           throw new Error('No order information provided');
         }
       } catch (err) {
@@ -160,42 +179,93 @@ const OrderConfirmation = () => {
     setIsPacketaProcessing(true);
     
     try {
-      // Find user email
-      const { data: userData } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('id', user?.id)
-        .single();
+      console.log('Processing Packeta order for order ID:', orderData.id);
       
-      const orderPayload = {
+      // Prepare the order data
+      let shippingAddress = orderData.shipping_address;
+      
+      // If shipping_address is a string, parse it
+      if (typeof shippingAddress === 'string') {
+        try {
+          shippingAddress = JSON.parse(shippingAddress);
+        } catch (e) {
+          console.error('Error parsing shipping address:', e);
+        }
+      }
+      
+      // Check if we have all required data
+      if (!shippingAddress || (shippingAddress.type === 'packeta' && !shippingAddress.pickupPoint)) {
+        console.error('Invalid shipping address data for Packeta:', shippingAddress);
+        toast({
+          title: 'Order Processing Error',
+          description: 'Missing pickup point information. Please contact customer support.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      // Get user email
+      let email = user?.email;
+      if (!email) {
+        const { data: userData } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('id', user?.id)
+          .single();
+          
+        email = userData?.email || '';
+      }
+      
+      // Create payload for the function
+      const payload = {
         order_id: orderData.id,
-        shipping_address: orderData.shipping_address,
-        items: orderData.order_items,
+        shipping_address: shippingAddress,
+        items: orderData.order_items || [],
         user_id: user?.id,
-        email: userData?.email || user?.email,
+        email: email,
         payment_method: orderData.payment_intent_id ? 'card' : 'cod'
       };
       
+      console.log('Sending Packeta order with payload:', payload);
+      
+      // Call the create-packeta-order function
       const { data, error } = await invokeFunction('create-packeta-order', {
-        body: orderPayload
+        body: payload
       });
       
       if (error) {
-        console.error('Error sending order to Packeta:', error);
+        console.error('Error creating Packeta order:', error);
         toast({
           title: 'Order Processing',
           description: 'Your order has been received, but there was a delay in shipping processing. Our team will handle it shortly.',
           variant: 'default',
         });
       } else {
-        console.log('Packeta order created:', data);
-        toast({
-          title: 'Order Processing',
-          description: 'Your order has been received and is being prepared for shipping.',
-        });
+        console.log('Packeta order created successfully:', data);
+        
+        // Update the order details
+        if (data.packeta_id || data.tracking_number) {
+          const trackingNumber = data.tracking_number || data.packeta_id || data.barcode;
+          
+          // Update the local state
+          setOrderDetails(prev => prev ? {
+            ...prev,
+            tracking_number: trackingNumber
+          } : null);
+          
+          toast({
+            title: 'Order Processing',
+            description: 'Your order has been received and is being prepared for shipping.',
+          });
+        }
       }
     } catch (err) {
       console.error('Error sending order to Packeta:', err);
+      toast({
+        title: 'Shipping Processing Error',
+        description: 'There was an error processing your shipping information. Our team has been notified.',
+        variant: 'destructive',
+      });
     } finally {
       setIsPacketaProcessing(false);
     }
@@ -203,7 +273,12 @@ const OrderConfirmation = () => {
   
   const handleStripeSession = async (sessionId: string) => {
     try {
-      console.log('Processing Stripe session:', sessionId);
+      console.log('Verifying Stripe session:', sessionId);
+      
+      // Ensure user is authenticated
+      if (!user || !user.id) {
+        throw new Error("Authentication required to process your order");
+      }
       
       // Verify the session with Stripe
       const { data, error: verifyError } = await invokeFunction('verify-checkout-session', {
@@ -211,17 +286,16 @@ const OrderConfirmation = () => {
       });
       
       if (verifyError) {
+        console.error('Session verification error:', verifyError);
         throw new Error(`Session verification failed: ${verifyError}`);
       }
       
       if (!data?.success) {
+        console.error('Invalid session data received:', data);
         throw new Error('Invalid session data received');
       }
       
       console.log('Session verified:', data);
-      
-      // Set flag to prevent infinite loop
-      setSessionProcessed(true);
       
       // Clear the cart after successful payment
       clearCart();
@@ -231,9 +305,19 @@ const OrderConfirmation = () => {
         description: "Your payment has been processed successfully.",
       });
       
-      // Check if this order already exists in our database
+      // Check if we have an order ID
       if (data.order_id) {
-        // Get order details
+        console.log(`Order created with ID: ${data.order_id}`);
+        
+        // Update URL with orderId and remove sessionId
+        const url = new URL(window.location.href);
+        url.searchParams.delete('session_id');
+        url.searchParams.set('orderId', data.order_id.toString());
+        
+        // Use history.replaceState to update URL without navigation
+        window.history.replaceState({}, '', url.toString());
+        
+        // Fetch the order details
         const { data: orderData, error: orderError } = await supabase
           .from('orders')
           .select(`
@@ -255,36 +339,35 @@ const OrderConfirmation = () => {
           `)
           .eq('id', data.order_id)
           .single();
-        
+          
         if (orderError) {
-          throw new Error(`Error fetching order: ${orderError.message}`);
+          console.error('Error fetching order:', orderError);
+          throw new Error('Could not find order details');
         }
         
-        setOrderDetails({
-          id: orderData.id,
-          status: orderData.status,
-          paymentMethod: 'Card',
-          date: new Date(orderData.created_at),
-          shipping_method: orderData.shipping_method,
-          total: orderData.total,
-          shipping_address: orderData.shipping_address,
-          tracking_number: orderData.tracking_number,
-          items: orderData.order_items
-        });
-        
-        // Process Packeta order
-        processPacketaOrder(orderData);
+        if (orderData) {
+          console.log('Order data retrieved:', orderData);
+          
+          setOrderDetails({
+            id: orderData.id,
+            status: orderData.status,
+            paymentMethod: orderData.payment_intent_id ? 'Card' : 'Cash on Delivery',
+            date: new Date(orderData.created_at),
+            shipping_method: orderData.shipping_method,
+            total: orderData.total,
+            shipping_address: orderData.shipping_address,
+            tracking_number: orderData.tracking_number,
+            items: orderData.order_items
+          });
+          
+          // If this is a Packeta order without a tracking number, process it
+          if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
+            await processPacketaOrder(orderData);
+          }
+        }
       } else {
-        // For older sessions without order_id reference
-        setOrderDetails({
-          id: sessionId.substring(0, 8),
-          status: 'paid',
-          paymentMethod: 'Card',
-          date: new Date(),
-          shipping_method: 'standard',
-          total: data.session.amount_total / 100,
-          shipping_address: {}
-        });
+        console.error('No order_id in response:', data);
+        throw new Error('No order ID returned from payment verification');
       }
     } catch (err) {
       console.error('Error processing Stripe session:', err);

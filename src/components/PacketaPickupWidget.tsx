@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -41,22 +40,35 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   // Setup global function and options for Packeta
   useEffect(() => {
     // Define the callback function for Packeta
-    window.showSelectedPickupPoint = (point: any) => {
+    window.showSelectedPickupPoint = (point: PacketaWidgetPoint) => {
       if (valueRef.current) {
         valueRef.current.innerText = '';
         if (point) {
-          console.log("Selected point", point);
+          console.log("Selected Packeta point (raw data):", point);
           valueRef.current.innerText = "Address: " + (point.formatedValue || '');
+          
+          // Make sure we have a valid ID - this is critical for the Packeta API
+          const pointId = point.id || point.carrierId;
+          if (!pointId) {
+            console.error('No valid ID found in the Packeta point data:', point);
+            toast({
+              title: 'Pickup Point Error',
+              description: 'Could not retrieve a valid pickup point ID. Please try selecting a different location.',
+              variant: 'destructive',
+            });
+            return;
+          }
           
           // Transform the point data to match our interface
           const selectedPoint: PacketaPoint = {
-            id: point.id || point.carrierId || 'unknown',
+            id: pointId,
             name: point.name || 'Unknown Location',
             address: point.street || 'Unknown Address',
             zip: point.zip || 'Unknown Zip',
             city: point.city || 'Unknown City'
           };
           
+          console.log("Formatted pickup point with ID:", selectedPoint);
           onSelect(selectedPoint);
           toast({
             title: 'Pickup Point Selected',
@@ -216,6 +228,9 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
           <p className="text-sm text-gray-600">
             {selectedPoint.address}, {selectedPoint.zip} {selectedPoint.city}
           </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Pickup Point ID: {selectedPoint.id}
+          </p>
         </div>
       )}
     </div>
@@ -228,7 +243,7 @@ declare global {
     Packeta: any;
     packetaOptions: any;
     packetaApiKey: string;
-    showSelectedPickupPoint: (point: any) => void;
+    showSelectedPickupPoint: (point: PacketaWidgetPoint) => void;
   }
 }
 
