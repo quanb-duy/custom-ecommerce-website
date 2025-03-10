@@ -1,6 +1,6 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@12.0.0"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +19,9 @@ serve(async (req) => {
     
     // Get API key from Supabase secrets
     const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY')
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    
     if (!STRIPE_SECRET_KEY) {
       console.error('STRIPE_SECRET_KEY is not set in Supabase secrets')
       return new Response(
@@ -32,6 +35,23 @@ serve(async (req) => {
         }
       )
     }
+    
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('Supabase credentials are missing')
+      return new Response(
+        JSON.stringify({ 
+          error: 'Service temporarily unavailable', 
+          code: 'missing_db_credentials'
+        }), 
+        { 
+          status: 503, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+
+    // Create Supabase client
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const stripe = new Stripe(STRIPE_SECRET_KEY, {
       apiVersion: '2022-11-15',
@@ -91,7 +111,9 @@ serve(async (req) => {
     try {
       console.log(`Retrieving checkout session: ${sessionId}`);
       
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['line_items', 'customer']
+      });
 
       console.log(`Session status: ${session.status}`);
       console.log(`Payment status: ${session.payment_status}`);
@@ -99,9 +121,108 @@ serve(async (req) => {
       // Get line items to return product information
       const lineItems = await stripe.checkout.sessions.listLineItems(sessionId);
       
+      let order_id = null;
+      
+      // Check if an order already exists for this session
+      if (session.payment_intent) {
+        const { data: existingOrders, error: queryError } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('payment_intent_id', session.payment_intent)
+          .limit(1);
+        
+        if (queryError) {
+          console.error('Error querying orders:', queryError);
+        } else if (existingOrders && existingOrders.length > 0) {
+          order_id = existingOrders[0].id;
+          console.log(`Found existing order: ${order_id}`);
+        }
+      }
+      
+      // If no order exists and payment is successful, create one
+      if (!order_id && session.payment_status === 'paid') {
+        try {
+          // Extract user_id from metadata
+          const user_id = session.metadata?.user_id;
+          
+          if (!user_id) {
+            console.error('No user_id found in session metadata');
+            throw new Error('Missing user_id in session metadata');
+          }
+          
+          // Extract shipping details from metadata
+          let shipping_address = {};
+          try {
+            if (session.metadata?.shipping_address) {
+              shipping_address = JSON.parse(session.metadata.shipping_address);
+            }
+          } catch (e) {
+            console.error('Error parsing shipping_address:', e);
+            shipping_address = { error: 'Failed to parse shipping address' };
+          }
+          
+          // Create order in database
+          const { data: newOrder, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              user_id,
+              status: 'paid',
+              total: session.amount_total / 100,
+              shipping_method: session.metadata?.shipping_method || 'standard',
+              shipping_address,
+              payment_intent_id: session.payment_intent,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+          
+          if (orderError) {
+            console.error('Error creating order:', orderError);
+            throw new Error(`Failed to create order: ${orderError.message}`);
+          }
+          
+          order_id = newOrder.id;
+          console.log(`Created new order: ${order_id}`);
+          
+          // Create order items
+          if (lineItems && lineItems.data.length > 0) {
+            const orderItems = lineItems.data.map(item => {
+              // Try to extract product_id from metadata
+              let product_id = 0;
+              try {
+                if (item.price?.product?.metadata?.product_id) {
+                  product_id = parseInt(item.price.product.metadata.product_id);
+                }
+              } catch (e) {
+                console.error('Error parsing product_id:', e);
+              }
+              
+              return {
+                order_id,
+                product_id,
+                product_name: item.description || 'Product',
+                product_price: (item.price?.unit_amount || 0) / 100,
+                quantity: item.quantity || 1
+              };
+            });
+            
+            const { error: itemsError } = await supabase
+              .from('order_items')
+              .insert(orderItems);
+              
+            if (itemsError) {
+              console.error('Error creating order items:', itemsError);
+            }
+          }
+        } catch (orderCreationError) {
+          console.error('Error creating order from session:', orderCreationError);
+        }
+      }
+      
       return new Response(
         JSON.stringify({ 
           success: true,
+          order_id,
           session: {
             id: session.id,
             status: session.status,

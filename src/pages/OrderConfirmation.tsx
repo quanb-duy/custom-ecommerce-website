@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -11,6 +10,39 @@ import { useCart } from '@/contexts/CartContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
+// Include Json type from Supabase
+type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+interface PickupPoint {
+  id?: string;
+  name: string;
+  address: string;
+  zip: string;
+  city: string;
+}
+
+interface ShippingAddress {
+  type?: 'packeta' | 'standard';
+  fullName: string;
+  phone?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
+  pickupPoint?: PickupPoint;
+}
+
+interface OrderItem {
+  id?: number;
+  order_id?: number;
+  product_id: number;
+  product_name: string;
+  product_price: number;
+  quantity: number;
+}
+
 interface OrderDetails {
   id: string | number;
   status: string;
@@ -18,10 +50,37 @@ interface OrderDetails {
   date: Date;
   shipping_method: string;
   total: number;
-  shipping_address: any;
+  shipping_address: ShippingAddress;
   tracking_number?: string;
-  items?: any[];
+  items?: OrderItem[];
 }
+
+interface OrderData {
+  id: number;
+  status: string;
+  total: number;
+  shipping_method: string;
+  shipping_address: Json;
+  payment_intent_id?: string;
+  tracking_number?: string;
+  created_at: string;
+  order_items: OrderItem[];
+}
+
+// Helper function to convert Json to ShippingAddress
+const parseShippingAddress = (json: Json): ShippingAddress => {
+  if (typeof json === 'string') {
+    try {
+      return JSON.parse(json) as ShippingAddress;
+    } catch (e) {
+      console.error('Error parsing shipping address:', e);
+      return { fullName: 'Error parsing address' };
+    }
+  }
+  
+  // If it's already an object, cast it
+  return json as unknown as ShippingAddress;
+};
 
 const OrderConfirmation = () => {
   const navigate = useNavigate();
@@ -80,6 +139,8 @@ const OrderConfirmation = () => {
           }
           
           if (orderData) {
+            console.log('Order data retrieved:', orderData);
+            
             setOrderDetails({
               id: orderData.id,
               status: orderData.status,
@@ -87,15 +148,19 @@ const OrderConfirmation = () => {
               date: new Date(orderData.created_at),
               shipping_method: orderData.shipping_method,
               total: orderData.total,
-              shipping_address: orderData.shipping_address,
+              shipping_address: parseShippingAddress(orderData.shipping_address),
               tracking_number: orderData.tracking_number,
               items: orderData.order_items
             });
             
-            // If order status is 'pending' or 'paid', send to Packeta
+            // If order status is 'pending' or 'paid', and no tracking number exists,
+            // send to Packeta for shipping processing
             if ((orderData.status === 'pending' || orderData.status === 'paid') && 
                 !orderData.tracking_number) {
+              console.log('Order needs Packeta processing, initiating...');
               processPacketaOrder(orderData);
+            } else {
+              console.log('Order already has tracking or is not in a processable state');
             }
             
             // Clear the cart after successful order fetch
@@ -156,10 +221,14 @@ const OrderConfirmation = () => {
     }
   };
 
-  const processPacketaOrder = async (orderData: any) => {
+  const processPacketaOrder = async (orderData: OrderData) => {
+    if (isPacketaProcessing) return; // Prevent duplicate processing
+    
     setIsPacketaProcessing(true);
     
     try {
+      console.log('Processing Packeta order for order ID:', orderData.id);
+      
       // Find user email
       const { data: userData } = await supabase
         .from('profiles')
@@ -176,6 +245,8 @@ const OrderConfirmation = () => {
         payment_method: orderData.payment_intent_id ? 'card' : 'cod'
       };
       
+      console.log('Sending order to Packeta with payload:', orderPayload);
+      
       const { data, error } = await invokeFunction('create-packeta-order', {
         body: orderPayload
       });
@@ -189,6 +260,15 @@ const OrderConfirmation = () => {
         });
       } else {
         console.log('Packeta order created:', data);
+        
+        // Update the order details with tracking information if available
+        if (data.packeta_id) {
+          setOrderDetails(prev => prev ? {
+            ...prev,
+            tracking_number: data.packeta_id
+          } : null);
+        }
+        
         toast({
           title: 'Order Processing',
           description: 'Your order has been received and is being prepared for shipping.',
@@ -196,6 +276,11 @@ const OrderConfirmation = () => {
       }
     } catch (err) {
       console.error('Error sending order to Packeta:', err);
+      toast({
+        title: 'Shipping Processing Error',
+        description: 'There was an error processing your shipping information. Our team has been notified.',
+        variant: 'destructive',
+      });
     } finally {
       setIsPacketaProcessing(false);
     }
@@ -233,58 +318,70 @@ const OrderConfirmation = () => {
       
       // Check if this order already exists in our database
       if (data.order_id) {
-        // Get order details
-        const { data: orderData, error: orderError } = await supabase
-          .from('orders')
-          .select(`
-            id, 
-            status, 
-            total, 
-            shipping_method, 
-            shipping_address, 
-            payment_intent_id, 
-            tracking_number,
-            created_at,
-            order_items:order_items(
-              id, 
-              product_id, 
-              product_name, 
-              product_price, 
-              quantity
-            )
-          `)
-          .eq('id', data.order_id)
-          .single();
-        
-        if (orderError) {
-          throw new Error(`Error fetching order: ${orderError.message}`);
-        }
-        
-        setOrderDetails({
-          id: orderData.id,
-          status: orderData.status,
-          paymentMethod: 'Card',
-          date: new Date(orderData.created_at),
-          shipping_method: orderData.shipping_method,
-          total: orderData.total,
-          shipping_address: orderData.shipping_address,
-          tracking_number: orderData.tracking_number,
-          items: orderData.order_items
-        });
-        
-        // Process Packeta order
-        processPacketaOrder(orderData);
+        // Redirect to the order confirmation page with the order ID
+        // Use replace: true to prevent back button from causing an infinite loop
+        navigate(`/order-confirmation?orderId=${data.order_id}`, { replace: true });
       } else {
-        // For older sessions without order_id reference
-        setOrderDetails({
-          id: sessionId.substring(0, 8),
-          status: 'paid',
-          paymentMethod: 'Card',
-          date: new Date(),
-          shipping_method: 'standard',
-          total: data.session.amount_total / 100,
-          shipping_address: {}
-        });
+        // If no order_id was returned, we need to create one
+        try {
+          // Prepare shipping address data
+          let shippingAddress = {};
+          if (data.session.metadata?.shipping_address) {
+            try {
+              shippingAddress = JSON.parse(data.session.metadata.shipping_address);
+            } catch (e) {
+              console.error('Error parsing shipping address:', e);
+            }
+          }
+          
+          // Create order data
+          const orderData = {
+            shipping_address: shippingAddress,
+            total: data.session.amount_total / 100,
+            shipping_method: data.session.metadata?.shipping_method || 'standard',
+            payment_status: 'paid',
+          };
+          
+          // Create order items from line items
+          const orderItems = data.lineItems?.map(item => {
+            // Try to extract product_id from metadata
+            let product_id = 0;
+            try {
+              if (item.price?.product?.metadata?.product_id) {
+                product_id = parseInt(item.price.product.metadata.product_id);
+              }
+            } catch (e) {
+              console.error('Error parsing product_id:', e);
+            }
+            
+            return {
+              product_id,
+              product_name: item.description || 'Product',
+              product_price: (item.price?.unit_amount || 0) / 100,
+              quantity: item.quantity || 1
+            };
+          }) || [];
+          
+          // Call create-order function
+          const { data: orderResult, error: orderError } = await invokeFunction('create-order', {
+            body: {
+              order_data: orderData,
+              order_items: orderItems,
+              user_id: user?.id,
+              payment_intent_id: data.session.payment_intent || data.session.id
+            }
+          });
+          
+          if (orderError) {
+            throw new Error(`Error creating order: ${orderError}`);
+          }
+          
+          // Redirect to the order confirmation page with the new order ID
+          navigate(`/order-confirmation?orderId=${orderResult.order_id}`, { replace: true });
+        } catch (err) {
+          console.error('Error creating order from session:', err);
+          setError('Could not create order details. Please contact customer support.');
+        }
       }
     } catch (err) {
       console.error('Error processing Stripe session:', err);

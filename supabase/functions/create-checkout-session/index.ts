@@ -1,6 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@12.0.0"
 
+// Define interfaces for type safety
+interface CartItem {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  quantity: number;
+  images?: string[];
+}
+
+interface CheckoutSessionRequest {
+  items: CartItem[];
+  success_url: string;
+  cancel_url: string;
+  metadata: {
+    user_id: string;
+    shipping_method?: string;
+    shipping_address?: string;
+    [key: string]: string | undefined;
+  };
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -95,15 +117,37 @@ serve(async (req) => {
     try {
       console.log('Creating checkout session...');
       
+      // Ensure metadata contains required fields for order creation
+      const enhancedMetadata = {
+        ...metadata,
+        // Make sure user_id is included
+        user_id: metadata.user_id || 'unknown',
+        // Include shipping method if provided
+        shipping_method: metadata.shipping_method || 'standard',
+        // Ensure shipping_address is a string if provided
+        shipping_address: metadata.shipping_address ? 
+          (typeof metadata.shipping_address === 'string' ? 
+            metadata.shipping_address : 
+            JSON.stringify(metadata.shipping_address)
+          ) : 
+          '{}'
+      };
+      
+      console.log('Enhanced metadata:', enhancedMetadata);
+      
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
-        line_items: items.map((item: any) => ({
+        line_items: items.map((item: CartItem) => ({
           price_data: {
             currency: 'usd',
             product_data: {
               name: item.name,
               description: item.description || undefined,
               images: item.images || undefined,
+              // Add product_id to metadata for order item creation
+              metadata: {
+                product_id: item.id || '0'
+              }
             },
             unit_amount: Math.round(item.price * 100), // Convert to cents
           },
@@ -112,7 +156,7 @@ serve(async (req) => {
         mode: 'payment',
         success_url: success_url,
         cancel_url: cancel_url,
-        metadata: metadata,
+        metadata: enhancedMetadata,
       });
 
       console.log(`Checkout session created: ${session.id}`);
