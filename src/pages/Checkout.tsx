@@ -69,6 +69,17 @@ const Checkout = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
   
+  useEffect(() => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to proceed with checkout",
+        variant: "destructive",
+      });
+      navigate('/login?redirect=' + encodeURIComponent('/checkout'));
+    }
+  }, [user, navigate, toast]);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [shippingMethod, setShippingMethod] = useState('standard');
   const [paymentMethod, setPaymentMethod] = useState('card');

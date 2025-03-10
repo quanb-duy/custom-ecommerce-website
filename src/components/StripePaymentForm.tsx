@@ -65,6 +65,10 @@ export const StripePaymentForm = ({
       setIsLoading(true);
       setError(null);
       
+      if (!user || !user.id) {
+        throw new Error('User authentication is required for checkout');
+      }
+      
       console.log('Starting Stripe checkout process for amount:', amount);
       
       // Prepare checkout session items from cart items
@@ -94,7 +98,7 @@ export const StripePaymentForm = ({
           success_url: `${window.location.origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/checkout?canceled=true`,
           metadata: {
-            user_id: user?.id || '',
+            user_id: user.id, // Always use a valid user ID
             shipping_method: shippingMethod,
             shipping_address: shippingAddress ? JSON.stringify(shippingAddress) : ''
           }

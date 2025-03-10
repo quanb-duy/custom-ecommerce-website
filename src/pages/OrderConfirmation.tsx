@@ -114,6 +114,13 @@ const OrderConfirmation = () => {
   const [sessionProcessed, setSessionProcessed] = useState(false);
   
   useEffect(() => {
+    // Check if we're processing a Stripe session but user is not authenticated
+    if (sessionId && !user) {
+      setIsLoading(false);
+      setError("Authentication required. Please sign in to view your order.");
+      return;
+    }
+    
     if (!user && !orderId && !sessionId) {
       navigate('/');
       return;
@@ -304,6 +311,11 @@ const OrderConfirmation = () => {
     try {
       console.log('Processing Stripe session:', sessionId);
       
+      // Ensure user is authenticated
+      if (!user || !user.id) {
+        throw new Error("Authentication required to process your order");
+      }
+      
       // Verify the session with Stripe
       const { data, error: verifyError } = await invokeFunction('verify-checkout-session', {
         body: { sessionId }
@@ -369,7 +381,7 @@ const OrderConfirmation = () => {
             shipping_address: shippingAddress,
             total: data.session.amount_total / 100,
             shipping_method: data.session.metadata?.shipping_method || 'standard',
-            payment_status: 'paid',
+            status: 'paid',
           };
           
           console.log('Creating order with data:', orderData);

@@ -143,6 +143,23 @@ serve(async (req) => {
       )
     }
 
+    // Validate that user_id is a valid UUID
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(user_id)) {
+      console.error(`Invalid user_id format: "${user_id}"`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid user_id format',
+          details: 'The user_id must be a valid UUID',
+          received: user_id
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+
     console.log(`Creating order for user: ${user_id}`)
     console.log(`Order items count: ${order_items.length}`)
     console.log(`Payment intent ID: ${payment_intent_id}`)
@@ -159,7 +176,7 @@ serve(async (req) => {
         ...order_data,
         user_id,
         payment_intent_id: isManualPayment ? null : payment_intent_id,
-        status: finalStatus
+        status: order_data.status || finalStatus // Use provided status or fallback to default
       })
       .select()
       .single()

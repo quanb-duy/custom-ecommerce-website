@@ -148,78 +148,85 @@ serve(async (req) => {
           
           if (!user_id) {
             console.error('No user_id found in session metadata. Full metadata:', session.metadata);
-            // Don't throw here - we'll return null order_id and let client handle it
+            // Don't try to create an order without a valid user_id
           } else {
-            // Extract shipping details from metadata
-            let shipping_address = {};
-            try {
-              if (session.metadata?.shipping_address) {
-                shipping_address = JSON.parse(session.metadata.shipping_address);
-              } else {
-                console.warn('No shipping_address found in metadata, using empty object');
-              }
-            } catch (e) {
-              console.error('Error parsing shipping_address:', e);
-              shipping_address = { error: 'Failed to parse shipping address' };
-            }
-            
-            // Create order in database
-            const { data: newOrder, error: orderError } = await supabase
-              .from('orders')
-              .insert({
-                user_id,
-                status: 'paid',
-                total: session.amount_total / 100,
-                shipping_method: session.metadata?.shipping_method || 'standard',
-                shipping_address,
-                payment_intent_id: session.payment_intent,
-                created_at: new Date().toISOString()
-              })
-              .select()
-              .single();
-            
-            if (orderError) {
-              console.error('Error creating order:', orderError);
-              console.error('Order data attempted:', {
-                user_id,
-                status: 'paid',
-                total: session.amount_total / 100,
-                shipping_method: session.metadata?.shipping_method || 'standard',
-                shipping_address,
-                payment_intent_id: session.payment_intent
-              });
+            // Validate that user_id looks like a UUID before proceeding
+            // Simple UUID format check (not perfect but catches obvious issues)
+            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidPattern.test(user_id)) {
+              console.error(`Invalid user_id format: "${user_id}" - must be a valid UUID`);
             } else {
-              order_id = newOrder.id;
-              console.log(`Created new order: ${order_id}`);
+              // Extract shipping details from metadata
+              let shipping_address = {};
+              try {
+                if (session.metadata?.shipping_address) {
+                  shipping_address = JSON.parse(session.metadata.shipping_address);
+                } else {
+                  console.warn('No shipping_address found in metadata, using empty object');
+                }
+              } catch (e) {
+                console.error('Error parsing shipping_address:', e);
+                shipping_address = { error: 'Failed to parse shipping address' };
+              }
               
-              // Create order items
-              if (lineItems && lineItems.data.length > 0) {
-                const orderItems = lineItems.data.map(item => {
-                  // Try to extract product_id from metadata
-                  let product_id = 0;
-                  try {
-                    if (item.price?.product?.metadata?.product_id) {
-                      product_id = parseInt(item.price.product.metadata.product_id);
-                    }
-                  } catch (e) {
-                    console.error('Error parsing product_id:', e);
-                  }
-                  
-                  return {
-                    order_id,
-                    product_id,
-                    product_name: item.description || 'Product',
-                    product_price: (item.price?.unit_amount || 0) / 100,
-                    quantity: item.quantity || 1
-                  };
+              // Create order in database
+              const { data: newOrder, error: orderError } = await supabase
+                .from('orders')
+                .insert({
+                  user_id,
+                  status: 'paid',
+                  total: session.amount_total / 100,
+                  shipping_method: session.metadata?.shipping_method || 'standard',
+                  shipping_address,
+                  payment_intent_id: session.payment_intent,
+                  created_at: new Date().toISOString()
+                })
+                .select()
+                .single();
+              
+              if (orderError) {
+                console.error('Error creating order:', orderError);
+                console.error('Order data attempted:', {
+                  user_id,
+                  status: 'paid',
+                  total: session.amount_total / 100,
+                  shipping_method: session.metadata?.shipping_method || 'standard',
+                  shipping_address,
+                  payment_intent_id: session.payment_intent
                 });
+              } else {
+                order_id = newOrder.id;
+                console.log(`Created new order: ${order_id}`);
                 
-                const { error: itemsError } = await supabase
-                  .from('order_items')
-                  .insert(orderItems);
+                // Create order items
+                if (lineItems && lineItems.data.length > 0) {
+                  const orderItems = lineItems.data.map(item => {
+                    // Try to extract product_id from metadata
+                    let product_id = 0;
+                    try {
+                      if (item.price?.product?.metadata?.product_id) {
+                        product_id = parseInt(item.price.product.metadata.product_id);
+                      }
+                    } catch (e) {
+                      console.error('Error parsing product_id:', e);
+                    }
+                    
+                    return {
+                      order_id,
+                      product_id,
+                      product_name: item.description || 'Product',
+                      product_price: (item.price?.unit_amount || 0) / 100,
+                      quantity: item.quantity || 1
+                    };
+                  });
                   
-                if (itemsError) {
-                  console.error('Error creating order items:', itemsError);
+                  const { error: itemsError } = await supabase
+                    .from('order_items')
+                    .insert(orderItems);
+                    
+                  if (itemsError) {
+                    console.error('Error creating order items:', itemsError);
+                  }
                 }
               }
             }
