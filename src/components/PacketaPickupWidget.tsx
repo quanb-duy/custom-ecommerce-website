@@ -27,8 +27,8 @@ interface PacketaPickupWidgetProps {
   selectedPoint?: PacketaPoint | null;
 }
 
-// Use constant value from documentation
-const PACKETA_API_KEY = '6a7673943d8ec270';
+// Use API key from environment or fallback to constant
+const PACKETA_API_KEY = import.meta.env.VITE_PACKETA_API_KEY || '6a7673943d8ec270';
 
 const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetProps) => {
   const [loading, setLoading] = useState(false);
@@ -36,6 +36,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   const { toast } = useToast();
   const valueRef = useRef<HTMLDivElement>(null);
   const [isWidgetReady, setIsWidgetReady] = useState(false);
+  const [widgetInitialized, setWidgetInitialized] = useState(false);
 
   // Setup global function and options for Packeta
   useEffect(() => {
@@ -85,6 +86,8 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
     // Store API key in global object as per Packeta's example
     window.packetaApiKey = PACKETA_API_KEY;
 
+    console.log("Packeta setup initialized with API key:", PACKETA_API_KEY);
+
     return () => {
       // Cleanup global properties when component unmounts
       delete window.showSelectedPickupPoint;
@@ -95,9 +98,14 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
 
   // Load Packeta widget script
   useEffect(() => {
-    if (!document.getElementById('packeta-widget-script')) {
+    const scriptId = 'packeta-widget-script';
+    
+    if (!document.getElementById(scriptId)) {
+      console.log('Loading Packeta widget script...');
+      setLoading(true);
+      
       const script = document.createElement('script');
-      script.id = 'packeta-widget-script';
+      script.id = scriptId;
       script.src = 'https://widget.packeta.com/v6/www/js/library.js';
       script.async = true;
       
@@ -105,6 +113,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
         console.log('Packeta widget script loaded successfully');
         setLoading(false);
         setIsWidgetReady(true);
+        setWidgetInitialized(true);
       };
       
       script.onerror = (e) => {
@@ -113,19 +122,50 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
         setLoading(false);
       };
       
-      setLoading(true);
       document.body.appendChild(script);
     } else {
+      console.log('Packeta widget script already exists');
       setIsWidgetReady(true);
+      if (window.Packeta) {
+        setWidgetInitialized(true);
+      }
     }
   }, []);
+
+  // Retry initializing widget if window.Packeta becomes available
+  useEffect(() => {
+    if (isWidgetReady && !widgetInitialized) {
+      const checkInterval = setInterval(() => {
+        if (window.Packeta) {
+          console.log("Window.Packeta is now available");
+          setWidgetInitialized(true);
+          clearInterval(checkInterval);
+        }
+      }, 500);
+      
+      return () => clearInterval(checkInterval);
+    }
+  }, [isWidgetReady, widgetInitialized]);
 
   const openPacketaWidget = () => {
     try {
       // Check if Packeta is defined in the global window object
       if (typeof window.Packeta === 'undefined') {
-        throw new Error('Packeta widget not loaded yet');
+        console.error('Packeta widget not loaded yet');
+        setError('Packeta widget not loaded yet. Please wait or refresh the page.');
+        toast({
+          title: 'Widget Not Ready',
+          description: 'Packeta widget is still loading. Please wait a moment.',
+          variant: 'destructive',
+        });
+        return;
       }
+
+      console.log("Opening Packeta widget with:", {
+        apiKey: window.packetaApiKey,
+        callback: typeof window.showSelectedPickupPoint,
+        options: window.packetaOptions
+      });
 
       // Using the direct approach from documentation
       window.Packeta.Widget.pick(
@@ -139,7 +179,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
       setError('Error opening Packeta widget: ' + errorMessage);
       toast({
         title: 'Widget Error',
-        description: 'Failed to open pickup points widget.',
+        description: 'Failed to open pickup points widget: ' + errorMessage,
         variant: 'destructive',
       });
     }
@@ -156,7 +196,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
       <button 
         className="packeta-selector-open w-full px-4 py-2 border rounded-md hover:bg-gray-50"
         onClick={openPacketaWidget}
-        disabled={loading || !isWidgetReady}
+        disabled={loading || !widgetInitialized}
       >
         {loading ? (
           <div className="flex items-center justify-center">

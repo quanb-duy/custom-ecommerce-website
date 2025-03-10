@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,7 @@ import { StripePaymentForm } from '@/components/StripePaymentForm';
 import PacketaPickupWidget from '@/components/PacketaPickupWidget';
 import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ShippingAddress {
   fullName: string;
@@ -47,9 +49,13 @@ interface ValidationErrors {
 
 const Checkout = () => {
   const navigate = useNavigate();
-  const { cartItems, cartTotal, totalItems, subtotal } = useCart();
+  const { cartItems, cartTotal, totalItems, subtotal, clearCart } = useCart();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { post: invokeFunction } = useSupabaseFunctions();
+  const [searchParams] = useSearchParams();
+  const sessionId = searchParams.get('session_id');
+  
   const [isLoading, setIsLoading] = useState(false);
   const [shippingMethod, setShippingMethod] = useState('standard');
   const [paymentMethod, setPaymentMethod] = useState('card');
@@ -57,6 +63,9 @@ const Checkout = () => {
   const [packetaPoint, setPacketaPoint] = useState<PacketaPoint | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [showPacketaRequiredError, setShowPacketaRequiredError] = useState(false);
+  const [userAddresses, setUserAddresses] = useState<any[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
@@ -69,7 +78,59 @@ const Checkout = () => {
     phone: '',
   });
 
-  const { post: invokeFunction, isLoading: functionLoading } = useSupabaseFunctions();
+  // Reset the Packeta error when shipping method changes or a point is selected
+  useEffect(() => {
+    if (shippingMethod !== 'packeta') {
+      setShowPacketaRequiredError(false);
+    } else if (packetaPoint) {
+      setShowPacketaRequiredError(false);
+    }
+  }, [shippingMethod, packetaPoint]);
+
+  // Load user addresses
+  useEffect(() => {
+    const loadUserAddresses = async () => {
+      if (user) {
+        try {
+          const { data, error } = await supabase
+            .from('user_addresses')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('is_default', { ascending: false });
+            
+          if (error) {
+            throw error;
+          }
+          
+          if (data && data.length > 0) {
+            setUserAddresses(data);
+            
+            // Select default address if available
+            const defaultAddress = data.find(addr => addr.is_default);
+            if (defaultAddress) {
+              setSelectedAddress(defaultAddress.id);
+              
+              // Populate shipping address form
+              setShippingAddress({
+                fullName: user.user_metadata?.full_name || '',
+                addressLine1: defaultAddress.address_line1,
+                addressLine2: defaultAddress.address_line2 || '',
+                city: defaultAddress.city,
+                state: defaultAddress.state,
+                zipCode: defaultAddress.postal_code,
+                country: defaultAddress.country,
+                phone: defaultAddress.phone || '',
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error loading user addresses:', error);
+        }
+      }
+    };
+    
+    loadUserAddresses();
+  }, [user]);
 
   const shippingCost = 
     shippingMethod === 'express' ? 15.00 : 
@@ -120,6 +181,24 @@ const Checkout = () => {
       });
     }
   }, []);
+
+  const handleAddressSelect = (addressId: string) => {
+    setSelectedAddress(addressId);
+    
+    const address = userAddresses.find(addr => addr.id === addressId);
+    if (address) {
+      setShippingAddress({
+        fullName: user?.user_metadata?.full_name || '',
+        addressLine1: address.address_line1,
+        addressLine2: address.address_line2 || '',
+        city: address.city,
+        state: address.state,
+        zipCode: address.postal_code,
+        country: address.country,
+        phone: address.phone || '',
+      });
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -187,11 +266,7 @@ const Checkout = () => {
       }
     } else {
       if (!packetaPoint) {
-        toast({
-          title: "Missing pickup point",
-          description: "Please select a Packeta pickup point",
-          variant: "destructive",
-        });
+        setShowPacketaRequiredError(true);
         return false;
       }
       
@@ -282,12 +357,16 @@ const Checkout = () => {
       
       console.log('Order created successfully:', data);
       
+      // Clear the cart after successful order creation
+      await clearCart();
+      
       toast({
         title: "Order placed successfully!",
         description: "Thank you for your purchase.",
       });
       
-      navigate('/order-confirmation');
+      // Redirect to confirmation page with order ID
+      navigate(`/order-confirmation?orderId=${data.order_id}`);
     } catch (error: unknown) {
       console.error('Error creating order:', error);
       toast({
@@ -376,8 +455,20 @@ const Checkout = () => {
                   <Card className="mb-8">
                     <CardContent className="pt-6">
                       <h2 className="text-xl font-medium mb-4">Select Pickup Point</h2>
+                      
+                      {showPacketaRequiredError && !packetaPoint && (
+                        <Alert variant="destructive" className="mb-4">
+                          <AlertDescription>
+                            Please select a Packeta pickup point
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                      
                       <PacketaPickupWidget 
-                        onSelect={setPacketaPoint}
+                        onSelect={(point) => {
+                          setPacketaPoint(point);
+                          setShowPacketaRequiredError(false);
+                        }}
                         selectedPoint={packetaPoint}
                       />
                       
@@ -420,6 +511,39 @@ const Checkout = () => {
                   <Card className="mb-8">
                     <CardContent className="pt-6">
                       <h2 className="text-xl font-medium mb-4">Shipping Address</h2>
+                      
+                      {userAddresses.length > 0 && (
+                        <div className="mb-6">
+                          <h3 className="text-sm font-medium mb-2">Saved Addresses</h3>
+                          <div className="space-y-2">
+                            {userAddresses.map(address => (
+                              <div 
+                                key={address.id}
+                                className={`border rounded-md p-3 cursor-pointer hover:bg-gray-50 ${
+                                  selectedAddress === address.id ? 'border-primary bg-gray-50' : ''
+                                }`}
+                                onClick={() => handleAddressSelect(address.id)}
+                              >
+                                <div className="flex justify-between">
+                                  <div>
+                                    <p className="font-medium">{address.address_line1}</p>
+                                    <p className="text-sm text-gray-600">
+                                      {address.city}, {address.state} {address.postal_code}
+                                    </p>
+                                  </div>
+                                  {address.is_default && (
+                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">Default</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Click an address to select it, or fill in the form below to use a new address.
+                          </p>
+                          <Separator className="my-4" />
+                        </div>
+                      )}
                       
                       <div className="space-y-4">
                         <div>
@@ -615,6 +739,9 @@ const Checkout = () => {
                         src={item.product.image} 
                         alt={item.product.name} 
                         className="w-16 h-16 object-cover rounded-md"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/placeholder.svg';
+                        }}
                       />
                       <div className="flex-1">
                         <h3 className="text-sm font-medium">{item.product.name}</h3>
