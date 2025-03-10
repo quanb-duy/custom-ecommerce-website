@@ -13,6 +13,28 @@ interface PacketaPoint {
   city: string;
 }
 
+interface PacketaWidgetCallbackPoint {
+  id: string;
+  name: string;
+  street: string;
+  zip: string;
+  city: string;
+}
+
+interface PacketaWidgetInstance {
+  open: () => void;
+}
+
+interface PacketaWidgetOptions {
+  appIdentity: string;
+  language: string;
+  country: string;
+  defaultExpanded: boolean;
+  apiKey: string;
+  showInfo: boolean;
+  callback: (point: PacketaWidgetCallbackPoint) => void;
+}
+
 interface PacketaPickupWidgetProps {
   onSelect: (point: PacketaPoint) => void;
   selectedPoint?: PacketaPoint | null;
@@ -21,9 +43,7 @@ interface PacketaPickupWidgetProps {
 declare global {
   interface Window {
     Packeta?: {
-      Widget: new (options: any) => {
-        open: () => void;
-      };
+      Widget: new (options: PacketaWidgetOptions) => PacketaWidgetInstance;
     };
   }
 }
@@ -34,7 +54,7 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
   const [pickupPoints, setPickupPoints] = useState<PacketaPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const widgetRef = useRef<any>(null);
+  const widgetRef = useRef<PacketaWidgetInstance | null>(null);
   const { get: invokeGetFunction } = useSupabaseFunctions();
 
   // Load the Packeta widget script
@@ -129,10 +149,10 @@ const PacketaPickupWidget = ({ onSelect, selectedPoint }: PacketaPickupWidgetPro
             language: 'en',
             country: 'US', // Change according to your default country
             defaultExpanded: true,
-            // In production, we would use real API credentials
-            apiKey: 'test-key', // This would be replaced with the real key at runtime
+            // Use the API key from environment variables
+            apiKey: import.meta.env.VITE_PACKETA_API_KEY || '',
             showInfo: true,
-            callback: (point: any) => {
+            callback: (point: PacketaWidgetCallbackPoint) => {
               // Process the selected pickup point
               const selectedPoint: PacketaPoint = {
                 id: point.id || 'unknown-id',

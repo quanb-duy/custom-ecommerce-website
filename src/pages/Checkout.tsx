@@ -69,7 +69,7 @@ const Checkout = () => {
     phone: '',
   });
 
-  const { post: invokeFunction } = useSupabaseFunctions();
+  const { post: invokeFunction, isLoading: functionLoading } = useSupabaseFunctions();
 
   const shippingCost = 
     shippingMethod === 'express' ? 15.00 : 
