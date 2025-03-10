@@ -11,6 +11,7 @@ export interface Address {
   state: string;
   postal_code: string;
   country: string;
+  phone?: string;
   is_default: boolean;
   created_at: string;
 }
@@ -33,5 +34,6 @@ export interface Order {
   shipping_method: string;
   shipping_address: any;
   payment_intent_id?: string;
+  tracking_number?: string;
   items?: OrderItem[];
 }

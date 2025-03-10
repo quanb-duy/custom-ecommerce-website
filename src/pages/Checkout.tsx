@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -78,7 +77,6 @@ const Checkout = () => {
     phone: '',
   });
 
-  // Reset the Packeta error when shipping method changes or a point is selected
   useEffect(() => {
     if (shippingMethod !== 'packeta') {
       setShowPacketaRequiredError(false);
@@ -87,7 +85,6 @@ const Checkout = () => {
     }
   }, [shippingMethod, packetaPoint]);
 
-  // Load user addresses
   useEffect(() => {
     const loadUserAddresses = async () => {
       if (user) {
@@ -105,12 +102,10 @@ const Checkout = () => {
           if (data && data.length > 0) {
             setUserAddresses(data);
             
-            // Select default address if available
             const defaultAddress = data.find(addr => addr.is_default);
             if (defaultAddress) {
               setSelectedAddress(defaultAddress.id);
               
-              // Populate shipping address form
               setShippingAddress({
                 fullName: user.user_metadata?.full_name || '',
                 addressLine1: defaultAddress.address_line1,
@@ -160,20 +155,17 @@ const Checkout = () => {
     }
   }, [shippingMethod]);
 
-  // Handle URL params for Stripe redirect
   useEffect(() => {
     const queryParams = new URLSearchParams(window.location.search);
     const sessionId = queryParams.get('session_id');
     const canceled = queryParams.get('canceled');
     
     if (sessionId) {
-      // Payment was successful, create the order
       console.log('Payment successful, session ID:', sessionId);
       handlePaymentSuccess(sessionId);
     }
     
     if (canceled) {
-      // Payment was canceled
       toast({
         title: "Payment Canceled",
         description: "Your payment was canceled. You can try again or choose a different payment method.",
@@ -357,7 +349,6 @@ const Checkout = () => {
       
       console.log('Order created successfully:', data);
       
-      // Clear the cart after successful order creation
       await clearCart();
       
       toast({
@@ -365,7 +356,6 @@ const Checkout = () => {
         description: "Thank you for your purchase.",
       });
       
-      // Redirect to confirmation page with order ID
       navigate(`/order-confirmation?orderId=${data.order_id}`);
     } catch (error: unknown) {
       console.error('Error creating order:', error);
@@ -530,6 +520,11 @@ const Checkout = () => {
                                     <p className="text-sm text-gray-600">
                                       {address.city}, {address.state} {address.postal_code}
                                     </p>
+                                    {address.phone && (
+                                      <p className="text-sm text-gray-600">
+                                        Phone: {address.phone}
+                                      </p>
+                                    )}
                                   </div>
                                   {address.is_default && (
                                     <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">Default</span>

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -58,6 +57,7 @@ const OrderConfirmation = () => {
               shipping_method, 
               shipping_address, 
               payment_intent_id, 
+              tracking_number,
               created_at,
               order_items:order_items(
                 id, 
@@ -67,7 +67,7 @@ const OrderConfirmation = () => {
                 quantity
               )
             `)
-            .eq('id', orderId)
+            .eq('id', Number(orderId))
             .single();
           
           if (orderError) {
