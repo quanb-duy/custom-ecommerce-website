@@ -126,6 +126,11 @@ const OrderConfirmation = () => {
       return;
     }
     
+    // Set session as processed immediately to prevent infinite loops
+    if (sessionId) {
+      setSessionProcessed(true);
+    }
+    
     const fetchOrderDetails = async () => {
       setIsLoading(true);
       
@@ -179,14 +184,15 @@ const OrderConfirmation = () => {
             const hasAttempted = sessionStorage.getItem(orderKey) === 'true';
             
             // If order status is 'pending' or 'paid', and no tracking number exists, and we haven't tried processing before
-            if ((orderData.status === 'pending' || orderData.status === 'paid') && 
+            if (orderData.shipping_method === 'packeta' && 
+                (orderData.status === 'pending' || orderData.status === 'paid') && 
                 !orderData.tracking_number && !hasAttempted) {
               console.log('Order needs Packeta processing, initiating...');
               
               // Mark this order as attempted in sessionStorage
               sessionStorage.setItem(orderKey, 'true');
               
-              processPacketaOrder(orderData);
+              await processPacketaOrder(orderData);
             } else if (hasAttempted && !orderData.tracking_number) {
               console.log('Packeta processing already attempted for this order, skipping...');
             } else {
@@ -266,10 +272,22 @@ const OrderConfirmation = () => {
         .eq('id', user?.id)
         .single();
       
+      // Ensure shipping_address is properly formatted
+      let shippingAddressData = orderData.shipping_address;
+      
+      // If it's a string, parse it
+      if (typeof shippingAddressData === 'string') {
+        try {
+          shippingAddressData = JSON.parse(shippingAddressData);
+        } catch (e) {
+          console.error('Error parsing shipping address string:', e);
+        }
+      }
+      
       const orderPayload = {
         order_id: orderData.id,
-        shipping_address: orderData.shipping_address,
-        items: orderData.order_items,
+        shipping_address: shippingAddressData,
+        items: orderData.order_items || [],
         user_id: user?.id,
         email: userData?.email || user?.email,
         payment_method: orderData.payment_intent_id ? 'card' : 'cod'
@@ -290,22 +308,40 @@ const OrderConfirmation = () => {
         });
         
         // Update database to mark order as needing manual Packeta processing
-        await supabase
+        const { error: updateError } = await supabase
           .from('orders')
           .update({
             notes: `Packeta processing failed: ${error}`,
             status: 'processing'
           })
           .eq('id', orderData.id);
+          
+        if (updateError) {
+          console.error('Error updating order status:', updateError);
+        }
       } else {
         console.log('Packeta order created:', data);
         
         // Update the order details with tracking information if available
-        if (data.packeta_id) {
+        if (data.packeta_id || data.barcode) {
           setOrderDetails(prev => prev ? {
             ...prev,
-            tracking_number: data.packeta_id
+            tracking_number: data.barcode || data.packeta_id
           } : null);
+          
+          // Refresh order data to get the updated tracking number
+          const { data: refreshedOrder } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('id', orderData.id)
+            .single();
+            
+          if (refreshedOrder && refreshedOrder.tracking_number) {
+            setOrderDetails(prev => prev ? {
+              ...prev,
+              tracking_number: refreshedOrder.tracking_number
+            } : null);
+          }
         }
         
         toast({
@@ -328,9 +364,6 @@ const OrderConfirmation = () => {
   const handleStripeSession = async (sessionId: string) => {
     try {
       console.log('Processing Stripe session:', sessionId);
-      
-      // Set flag to prevent infinite loop immediately
-      setSessionProcessed(true);
       
       // Ensure user is authenticated
       if (!user || !user.id) {

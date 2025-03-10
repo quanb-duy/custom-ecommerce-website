@@ -7,35 +7,77 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 }
 
-// Define the Packeta API base URL - This is the correct URL for the Packeta/Zasilkovna API
+// Define the Packeta API base URL
 const PACKETA_API_URL = "https://www.zasilkovna.cz/api/rest";
 
-// Helper function to build simple XML
+// Improved XML builder function
 function buildXML(obj: Record<string, unknown>): string {
-  const toXml = (item: unknown, name: string): string => {
-    if (item === null || item === undefined) return '';
+  const xml = ['<?xml version="1.0" encoding="utf-8"?>'];
+  
+  function addToXml(object: any, name: string, indent = ''): void {
+    if (object === null || object === undefined) return;
     
-    if (typeof item === 'object' && !Array.isArray(item)) {
-      let xml = `<${name}>`;
-      for (const key in item as Record<string, unknown>) {
-        if (Object.prototype.hasOwnProperty.call(item, key)) {
-          xml += toXml((item as Record<string, unknown>)[key], key);
+    if (typeof object === 'object' && !Array.isArray(object)) {
+      xml.push(`${indent}<${name}>`);
+      const newIndent = indent + '  ';
+      for (const key in object) {
+        if (Object.prototype.hasOwnProperty.call(object, key)) {
+          addToXml(object[key], key, newIndent);
         }
       }
-      xml += `</${name}>`;
-      return xml;
-    } else if (Array.isArray(item)) {
-      let xml = '';
-      for (const subItem of item) {
-        xml += toXml(subItem, name);
+      xml.push(`${indent}</${name}>`);
+    } else if (Array.isArray(object)) {
+      for (const item of object) {
+        addToXml(item, name, indent);
       }
-      return xml;
     } else {
-      return `<${name}>${item}</${name}>`;
+      xml.push(`${indent}<${name}>${object}</${name}>`);
     }
-  };
+  }
   
-  return toXml(obj, Object.keys(obj)[0]);
+  const rootKey = Object.keys(obj)[0];
+  addToXml(obj[rootKey], rootKey);
+  
+  return xml.join('\n');
+}
+
+// Simple XML parser
+function parseXMLResponse(xml: string): any {
+  const result: any = {};
+  
+  try {
+    // Extract status
+    const statusMatch = xml.match(/<status>(.*?)<\/status>/);
+    if (statusMatch) {
+      result.status = statusMatch[1];
+    }
+    
+    // Extract result elements
+    result.result = {};
+    
+    // Extract ID
+    const idMatch = xml.match(/<id>(.*?)<\/id>/);
+    if (idMatch) {
+      result.result.id = idMatch[1];
+    }
+    
+    // Extract barcode
+    const barcodeMatch = xml.match(/<barcode>(.*?)<\/barcode>/);
+    if (barcodeMatch) {
+      result.result.barcode = barcodeMatch[1];
+    }
+    
+    // Extract error message if present
+    const errorMatch = xml.match(/<message>(.*?)<\/message>/);
+    if (errorMatch) {
+      result.message = errorMatch[1];
+    }
+    
+    return result;
+  } catch (e) {
+    console.error("Error parsing XML:", e);
+    return { status: "error", message: "Failed to parse XML response" };
+  }
 }
 
 serve(async (req) => {
@@ -196,80 +238,92 @@ serve(async (req) => {
       return sum + (item.product_price * item.quantity);
     }, 0);
 
-    // 2. Prepare Packeta API request payload according to their XML format
-    let packetaXmlPayload;
-    
-    // Split name into first and last name
-    const nameParts = shipping_address.fullName ? shipping_address.fullName.split(' ') : ['', ''];
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
-    
-    // Prepare packet attributes based on delivery type
-    if (shipping_address.type === 'packeta' && shipping_address.pickupPoint) {
-      // For Packeta pickup points (PUDOs)
-      const pickupPointId = shipping_address.pickupPoint.id;
-      
-      if (!pickupPointId) {
-        console.error('Missing pickup point ID in shipping address');
+    // Parse shipping address to get pickup point if present
+    let addressData = shipping_address;
+    if (typeof shipping_address === 'string') {
+      try {
+        addressData = JSON.parse(shipping_address);
+      } catch (e) {
+        console.error('Error parsing shipping address string:', e);
         return new Response(
           JSON.stringify({ 
-            error: 'Missing pickup point ID',
-            details: 'The pickup point ID is required for Packeta shipments'
+            error: 'Invalid shipping address format',
+            details: 'Could not parse shipping address'
           }), 
           { 
             status: 400, 
             headers: { ...corsHeaders, "Content-Type": "application/json" } 
           }
-        );
+        )
       }
-      
-      // Build XML payload for pickup point
-      packetaXmlPayload = {
-        createPacket: {
-          apiPassword: packetaApiPassword,
-          packetAttributes: {
-            number: `ECOM-${order_id}`,
-            name: firstName,
-            surname: lastName,
-            email: email,
-            phone: shipping_address.phone || '',
-            addressId: pickupPointId,
-            cod: payment_method === 'cod' ? totalValue : 0,
-            value: totalValue,
-            currency: 'USD',
-            weight: calculateTotalWeight(items),
-            eshop: 'ecommerce-site'
-          }
-        }
-      };
-    } else {
-      // For home delivery (standard shipping)
-      // Build XML payload for home delivery
-      packetaXmlPayload = {
-        createPacket: {
-          apiPassword: packetaApiPassword,
-          packetAttributes: {
-            number: `ECOM-${order_id}`,
-            name: firstName,
-            surname: lastName,
-            email: email,
-            phone: shipping_address.phone || '',
-            street: shipping_address.addressLine1 || '',
-            city: shipping_address.city || '',
-            zip: shipping_address.zipCode || '',
-            country: getCountryCode(shipping_address.country),
-            cod: payment_method === 'cod' ? totalValue : 0,
-            value: totalValue,
-            currency: 'USD',
-            weight: calculateTotalWeight(items),
-            eshop: 'ecommerce-site'
-          }
-        }
-      };
     }
-
-    // Convert payload to XML
-    const xmlPayload = buildXML(packetaXmlPayload);
+    
+    // Debug logging for pickup point
+    console.log('Shipping address data:', addressData);
+    
+    // Split name into first and last name
+    const fullName = addressData.fullName || '';
+    const nameParts = fullName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    
+    // Get the pickup point ID
+    let pickupPointId = null;
+    
+    if (addressData.type === 'packeta' && addressData.pickupPoint) {
+      pickupPointId = addressData.pickupPoint.id;
+      console.log(`Found pickup point ID: ${pickupPointId}`);
+    } else {
+      console.error('Missing pickup point ID - address type:', addressData.type);
+      return new Response(
+        JSON.stringify({
+          error: 'Invalid pickup point configuration',
+          details: 'Pickup point ID is required for Packeta shipments',
+          shipping_data: addressData
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+    
+    if (!pickupPointId) {
+      console.error('Missing pickup point ID in shipping address');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing pickup point ID',
+          details: 'The pickup point ID is required for Packeta shipments'
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      );
+    }
+    
+    // Prepare Packeta API request following their example
+    const packetaRequestBody = {
+      createPacket: {
+        apiPassword: packetaApiPassword,
+        packetAttributes: {
+          number: `ECOM-${order_id}`,
+          name: firstName,
+          surname: lastName,
+          email: email,
+          phone: addressData.phone || '',
+          addressId: pickupPointId, // This is the important field for pickup point
+          cod: payment_method === 'cod' ? totalValue : 0,
+          value: totalValue,
+          currency: 'USD',
+          weight: calculateTotalWeight(items),
+          eshop: 'ecommerce-site'
+        }
+      }
+    };
+    
+    // Build XML
+    const xmlPayload = buildXML(packetaRequestBody);
     console.log('Prepared Packeta XML payload:', xmlPayload);
 
     // Helper function to calculate total weight based on items
@@ -282,17 +336,6 @@ serve(async (req) => {
       
       // Ensure minimum weight of 0.1 kg
       return Math.max(totalWeight, 0.1);
-    }
-    
-    // Helper function to get 2-letter country code
-    function getCountryCode(country) {
-      const countryCodes = {
-        'United States': 'US',
-        'Czech Republic': 'CZ',
-        'Slovakia': 'SK',
-        // Add more countries as needed
-      };
-      return countryCodes[country] || 'US'; // Default to US if not found
     }
 
     // 3. Send order to Packeta API using XML
@@ -311,43 +354,12 @@ serve(async (req) => {
       const responseText = await response.text();
       console.log('Packeta API raw response:', responseText);
       
-      // Simple XML parsing - in production, use a proper XML parser
-      let parsedResponse: { 
-        status: string; 
-        result: { 
-          id: string | null; 
-          barcode: string | null; 
-        } 
-      } = { 
-        status: 'error', 
-        result: { 
-          id: null, 
-          barcode: null 
-        } 
-      };
-      
-      try {
-        // Very basic XML parsing - for production, use a proper XML parser
-        const statusMatch = responseText.match(/<status>(.*?)<\/status>/);
-        const idMatch = responseText.match(/<id>(.*?)<\/id>/);
-        const barcodeMatch = responseText.match(/<barcode>(.*?)<\/barcode>/);
-        
-        parsedResponse = {
-          status: statusMatch ? statusMatch[1] : 'error',
-          result: {
-            id: idMatch ? idMatch[1] : null,
-            barcode: barcodeMatch ? barcodeMatch[1] : null
-          }
-        };
-      } catch (parseError) {
-        console.error('Error parsing XML response:', parseError);
-      }
-      
-      packetaResponse = parsedResponse;
+      // Parse XML response
+      packetaResponse = parseXMLResponse(responseText);
       console.log('Packeta API parsed response:', packetaResponse);
       
       if (!response.ok || packetaResponse.status !== 'ok') {
-        throw new Error(`Packeta API error: ${responseText}`);
+        throw new Error(`Packeta API error: ${packetaResponse.message || responseText}`);
       }
     } catch (apiError) {
       console.error('Error calling Packeta API:', apiError);
@@ -381,12 +393,24 @@ serve(async (req) => {
       .update({ 
         status: 'processing',
         tracking_number: packetaResponse.result.barcode,
-        carrier_data: packetaResponse
+        carrier_data: packetaResponse,
+        notes: 'Order submitted to Packeta'
       })
       .eq('id', order_id);
 
     if (updateError) {
       console.error('Error updating order with tracking info:', updateError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Database update error',
+          details: updateError.message,
+          packeta_id: packetaResponse.result.id
+        }), 
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
     }
 
     return new Response(
