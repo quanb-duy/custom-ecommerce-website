@@ -279,10 +279,44 @@ const OrderConfirmation = () => {
       if (typeof shippingAddressData === 'string') {
         try {
           shippingAddressData = JSON.parse(shippingAddressData);
+          console.log('Parsed shipping address from string:', shippingAddressData);
         } catch (e) {
           console.error('Error parsing shipping address string:', e);
         }
       }
+      
+      // Manually structure the shipping address for Packeta if needed
+      if (!shippingAddressData.type && shippingAddressData.pickupPoint) {
+        console.log('Adding type=packeta to shipping address');
+        shippingAddressData = {
+          ...shippingAddressData,
+          type: 'packeta'
+        };
+      } else if (!shippingAddressData.type) {
+        console.log('No pickup point found, trying to create packeta shipping address from existing data');
+        // Try to find any pickup point data
+        const pickupPointData = findPickupPoint(shippingAddressData);
+        
+        if (pickupPointData) {
+          console.log('Found pickup point data:', pickupPointData);
+          shippingAddressData = {
+            type: 'packeta',
+            pickupPoint: pickupPointData,
+            fullName: shippingAddressData.fullName || userData?.email || user?.email || 'Customer',
+            phone: shippingAddressData.phone || ''
+          };
+        } else {
+          console.error('Cannot process Packeta order: No pickup point found in shipping address');
+          toast({
+            title: 'Processing Error',
+            description: 'Could not find pickup point information. Please contact support.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+      
+      console.log('Final shipping address for Packeta:', shippingAddressData);
       
       const orderPayload = {
         order_id: orderData.id,
@@ -359,6 +393,39 @@ const OrderConfirmation = () => {
     } finally {
       setIsPacketaProcessing(false);
     }
+  };
+  
+  // Helper function to find a pickup point in a complex object
+  const findPickupPoint = (obj: any): PickupPoint | null => {
+    if (!obj) return null;
+    
+    // If the object itself has id, name, address properties, it might be a pickup point
+    if (obj.id && obj.name && (obj.address || obj.street)) {
+      return {
+        id: obj.id,
+        name: obj.name,
+        address: obj.address || obj.street,
+        zip: obj.zip,
+        city: obj.city
+      };
+    }
+    
+    // If it has a pickupPoint property
+    if (obj.pickupPoint) {
+      return obj.pickupPoint;
+    }
+    
+    // Recursively check all object properties
+    if (typeof obj === 'object') {
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          const found = findPickupPoint(obj[key]);
+          if (found) return found;
+        }
+      }
+    }
+    
+    return null;
   };
   
   const handleStripeSession = async (sessionId: string) => {

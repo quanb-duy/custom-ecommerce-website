@@ -202,10 +202,17 @@ serve(async (req) => {
                 if (lineItems && lineItems.data.length > 0) {
                   const orderItems = lineItems.data.map(item => {
                     // Try to extract product_id from metadata
-                    let product_id = 0;
+                    let product_id = null;
                     try {
                       if (item.price?.product?.metadata?.product_id) {
-                        product_id = parseInt(item.price.product.metadata.product_id);
+                        const parsedId = parseInt(item.price.product.metadata.product_id);
+                        if (!isNaN(parsedId) && parsedId > 0) {
+                          product_id = parsedId;
+                        } else {
+                          console.warn(`Invalid product_id value: ${item.price.product.metadata.product_id}`);
+                        }
+                      } else {
+                        console.warn('No product_id found in metadata for item:', item.description);
                       }
                     } catch (e) {
                       console.error('Error parsing product_id:', e);
@@ -218,14 +225,21 @@ serve(async (req) => {
                       product_price: (item.price?.unit_amount || 0) / 100,
                       quantity: item.quantity || 1
                     };
-                  });
+                  }).filter(item => item.product_id !== null);
                   
-                  const { error: itemsError } = await supabase
-                    .from('order_items')
-                    .insert(orderItems);
-                    
-                  if (itemsError) {
-                    console.error('Error creating order items:', itemsError);
+                  // Only insert items if we have valid product IDs
+                  if (orderItems.length > 0) {
+                    const { error: itemsError } = await supabase
+                      .from('order_items')
+                      .insert(orderItems);
+                      
+                    if (itemsError) {
+                      console.error('Error creating order items:', itemsError);
+                    } else {
+                      console.log(`Created ${orderItems.length} order items for order ${order_id}`);
+                    }
+                  } else {
+                    console.warn('No valid order items to create - all items had invalid product_id values');
                   }
                 }
               }

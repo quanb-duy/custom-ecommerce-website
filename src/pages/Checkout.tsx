@@ -333,6 +333,12 @@ const Checkout = () => {
     try {
       console.log('Creating order with payment ID:', paymentId);
       
+      if (shippingMethod === 'packeta' && !packetaPoint) {
+        setShowPacketaRequiredError(true);
+        window.scrollTo(0, 0);
+        throw new Error('Please select a pickup point');
+      }
+      
       const shippingAddressData = shippingMethod === 'packeta' 
         ? {
             type: 'packeta',
@@ -341,6 +347,8 @@ const Checkout = () => {
             phone: shippingAddress.phone || '',
           }
         : shippingAddress;
+      
+      console.log('Shipping address data for order:', shippingAddressData);
       
       const orderData = {
         shipping_address: shippingAddressData,

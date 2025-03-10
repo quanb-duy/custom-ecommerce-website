@@ -261,46 +261,45 @@ serve(async (req) => {
     // Debug logging for pickup point
     console.log('Shipping address data:', addressData);
     
+    // Extract pickup point from shipping address
+    let pickupPointId = null;
+    if (addressData.type === 'packeta' && addressData.pickupPoint && addressData.pickupPoint.id) {
+      pickupPointId = addressData.pickupPoint.id;
+      console.log(`Found pickup point ID in pickupPoint object: ${pickupPointId}`);
+    } else if (addressData.pickupPoint && addressData.pickupPoint.id) {
+      // If we have a pickupPoint but type isn't set to packeta
+      pickupPointId = addressData.pickupPoint.id;
+      console.log(`Found pickup point ID without packeta type: ${pickupPointId}`);
+    } else if (addressData.id) {
+      // The shipping address itself might be a pickup point
+      pickupPointId = addressData.id;
+      console.log(`Found pickup point ID in root object: ${pickupPointId}`);
+    } else {
+      // Try to find the pickup point ID in the object
+      pickupPointId = findPickupPointId(addressData);
+      if (pickupPointId) {
+        console.log(`Found pickup point ID through deep search: ${pickupPointId}`);
+      } else {
+        console.error('Missing pickup point ID - address data:', addressData);
+        return new Response(
+          JSON.stringify({
+            error: 'Invalid pickup point configuration',
+            details: 'Pickup point ID is required for Packeta shipments',
+            shipping_data: addressData
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          }
+        );
+      }
+    }
+    
     // Split name into first and last name
-    const fullName = addressData.fullName || '';
+    const fullName = addressData.fullName || email || '';
     const nameParts = fullName.split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
-    
-    // Get the pickup point ID
-    let pickupPointId = null;
-    
-    if (addressData.type === 'packeta' && addressData.pickupPoint) {
-      pickupPointId = addressData.pickupPoint.id;
-      console.log(`Found pickup point ID: ${pickupPointId}`);
-    } else {
-      console.error('Missing pickup point ID - address type:', addressData.type);
-      return new Response(
-        JSON.stringify({
-          error: 'Invalid pickup point configuration',
-          details: 'Pickup point ID is required for Packeta shipments',
-          shipping_data: addressData
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        }
-      );
-    }
-    
-    if (!pickupPointId) {
-      console.error('Missing pickup point ID in shipping address');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Missing pickup point ID',
-          details: 'The pickup point ID is required for Packeta shipments'
-        }), 
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      );
-    }
     
     // Prepare Packeta API request following their example
     const packetaRequestBody = {
@@ -325,6 +324,40 @@ serve(async (req) => {
     // Build XML
     const xmlPayload = buildXML(packetaRequestBody);
     console.log('Prepared Packeta XML payload:', xmlPayload);
+
+    // Helper function to find a pickup point ID in a complex object
+    function findPickupPointId(obj: any): string | null {
+      if (!obj) return null;
+      
+      // Check all possible ways a pickup point ID might be stored
+      if (obj.pickupPointId) return obj.pickupPointId;
+      if (obj.pickup_point_id) return obj.pickup_point_id;
+      if (obj.address_id) return obj.address_id;
+      
+      // Recursively check properties
+      if (typeof obj === 'object') {
+        for (const key in obj) {
+          if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            // If we find an object with both id and name properties, it might be a pickup point
+            if (key === 'pickupPoint' || key === 'pickup_point') {
+              return obj[key]?.id || null;
+            }
+            
+            if (key === 'id' && 
+                (obj.name || obj.title) && 
+                (obj.address || obj.street)) {
+              return obj.id;
+            }
+            
+            // Recursive search
+            const found = findPickupPointId(obj[key]);
+            if (found) return found;
+          }
+        }
+      }
+      
+      return null;
+    }
 
     // Helper function to calculate total weight based on items
     function calculateTotalWeight(items) {
