@@ -22,26 +22,12 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     
-    if (!STRIPE_SECRET_KEY) {
-      console.error('STRIPE_SECRET_KEY is not set in Supabase secrets')
+    if (!STRIPE_SECRET_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('Missing required environment variables')
       return new Response(
         JSON.stringify({ 
           error: 'Service temporarily unavailable', 
-          code: 'missing_api_key'
-        }), 
-        { 
-          status: 503, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
-      )
-    }
-    
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('Supabase credentials are missing')
-      return new Response(
-        JSON.stringify({ 
-          error: 'Service temporarily unavailable', 
-          code: 'missing_db_credentials'
+          code: 'missing_config'
         }), 
         { 
           status: 503, 
@@ -121,101 +107,77 @@ serve(async (req) => {
       // Get line items to return product information
       const lineItems = await stripe.checkout.sessions.listLineItems(sessionId);
       
-      let order_id = null;
-      
       // Check if an order already exists for this session
-      if (session.payment_intent) {
-        const { data: existingOrders, error: queryError } = await supabase
-          .from('orders')
-          .select('id')
-          .eq('payment_intent_id', session.payment_intent)
-          .limit(1);
-        
-        if (queryError) {
-          console.error('Error querying orders:', queryError);
-        } else if (existingOrders && existingOrders.length > 0) {
-          order_id = existingOrders[0].id;
-          console.log(`Found existing order: ${order_id}`);
-        }
+      const { data: existingOrders, error: queryError } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('payment_intent_id', session.payment_intent)
+        .limit(1);
+      
+      if (queryError) {
+        console.error('Error querying orders:', queryError);
       }
       
-      // If no order exists and payment is successful, create one
-      if (!order_id && session.payment_status === 'paid') {
-        try {
-          // Extract user_id from metadata
-          const user_id = session.metadata?.user_id;
-          
-          if (!user_id) {
-            console.error('No user_id found in session metadata');
-            throw new Error('Missing user_id in session metadata');
-          }
-          
-          // Extract shipping details from metadata
-          let shipping_address = {};
-          try {
-            if (session.metadata?.shipping_address) {
-              shipping_address = JSON.parse(session.metadata.shipping_address);
-            }
-          } catch (e) {
-            console.error('Error parsing shipping_address:', e);
-            shipping_address = { error: 'Failed to parse shipping address' };
-          }
-          
-          // Create order in database
-          const { data: newOrder, error: orderError } = await supabase
-            .from('orders')
-            .insert({
-              user_id,
-              status: 'paid',
-              total: session.amount_total / 100,
-              shipping_method: session.metadata?.shipping_method || 'standard',
-              shipping_address,
-              payment_intent_id: session.payment_intent,
-              created_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-          
-          if (orderError) {
-            console.error('Error creating order:', orderError);
-            throw new Error(`Failed to create order: ${orderError.message}`);
-          }
-          
+      let order_id = null;
+      
+      // If order exists, use it
+      if (existingOrders && existingOrders.length > 0) {
+        order_id = existingOrders[0].id;
+        console.log(`Found existing order: ${order_id}`);
+      } 
+      // Otherwise create a new order
+      else if (session.payment_status === 'paid') {
+        // Extract shipping details from session metadata or customer
+        const shipping_address = session.metadata?.shipping_address ? 
+          JSON.parse(session.metadata.shipping_address) : 
+          session.shipping ? session.shipping : {};
+        
+        // Extract shipping method from metadata
+        const shipping_method = session.metadata?.shipping_method || 'standard';
+        
+        // Calculate total amount in correct format
+        const total = session.amount_total / 100;
+        
+        // Get user_id from metadata or customer object
+        const user_id = session.metadata?.user_id || session.customer?.metadata?.user_id;
+        
+        // Create new order in database
+        const { data: newOrder, error: insertError } = await supabase
+          .from('orders')
+          .insert({
+            user_id,
+            status: 'paid',
+            total,
+            shipping_method,
+            shipping_address,
+            payment_intent_id: session.payment_intent,
+            created_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+        
+        if (insertError) {
+          console.error('Error creating order:', insertError);
+        } else if (newOrder) {
           order_id = newOrder.id;
           console.log(`Created new order: ${order_id}`);
           
-          // Create order items
-          if (lineItems && lineItems.data.length > 0) {
-            const orderItems = lineItems.data.map(item => {
-              // Try to extract product_id from metadata
-              let product_id = 0;
-              try {
-                if (item.price?.product?.metadata?.product_id) {
-                  product_id = parseInt(item.price.product.metadata.product_id);
-                }
-              } catch (e) {
-                console.error('Error parsing product_id:', e);
-              }
-              
-              return {
-                order_id,
-                product_id,
-                product_name: item.description || 'Product',
-                product_price: (item.price?.unit_amount || 0) / 100,
-                quantity: item.quantity || 1
-              };
-            });
+          // Insert order items
+          const orderItems = lineItems.data.map(item => ({
+            order_id: order_id,
+            product_id: parseInt(item.price?.product?.metadata?.product_id || '0'),
+            product_name: item.description || '',
+            product_price: (item.price?.unit_amount || 0) / 100,
+            quantity: item.quantity || 1
+          }));
+          
+          const { error: itemsError } = await supabase
+            .from('order_items')
+            .insert(orderItems);
             
-            const { error: itemsError } = await supabase
-              .from('order_items')
-              .insert(orderItems);
-              
-            if (itemsError) {
-              console.error('Error creating order items:', itemsError);
-            }
+          if (itemsError) {
+            console.error('Error inserting order items:', itemsError);
           }
-        } catch (orderCreationError) {
-          console.error('Error creating order from session:', orderCreationError);
         }
       }
       

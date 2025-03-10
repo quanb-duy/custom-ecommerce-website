@@ -28,20 +28,6 @@ interface ShippingAddress {
   phone: string;
 }
 
-interface UserAddress {
-  id: string;
-  user_id: string;
-  address_line1: string;
-  address_line2?: string;
-  city: string;
-  state: string;
-  postal_code: string;
-  country: string;
-  phone?: string;
-  is_default: boolean;
-  created_at: string;
-}
-
 interface PacketaPoint {
   id: string;
   name: string;
@@ -77,7 +63,7 @@ const Checkout = () => {
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [showPacketaRequiredError, setShowPacketaRequiredError] = useState(false);
-  const [userAddresses, setUserAddresses] = useState<UserAddress[]>([]);
+  const [userAddresses, setUserAddresses] = useState<any[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({

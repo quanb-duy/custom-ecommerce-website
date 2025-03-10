@@ -9,12 +9,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useCart } from '@/contexts/CartContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
-// Include Json type from Supabase
-type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+import type { Json } from '@/integrations/supabase/types';
 
 interface PickupPoint {
-  id?: string;
   name: string;
   address: string;
   zip: string;
@@ -36,7 +33,6 @@ interface ShippingAddress {
 
 interface OrderItem {
   id?: number;
-  order_id?: number;
   product_id: number;
   product_name: string;
   product_price: number;
@@ -55,30 +51,36 @@ interface OrderDetails {
   items?: OrderItem[];
 }
 
-interface OrderData {
-  id: number;
-  status: string;
-  total: number;
-  shipping_method: string;
-  shipping_address: Json;
-  payment_intent_id?: string;
-  tracking_number?: string;
-  created_at: string;
-  order_items: OrderItem[];
+interface LineItem {
+  id: string;
+  price?: {
+    unit_amount?: number;
+    product?: {
+      metadata?: {
+        product_id?: string;
+      };
+    };
+  };
+  description?: string;
+  quantity?: number;
 }
 
-// Helper function to convert Json to ShippingAddress
-const parseShippingAddress = (json: Json): ShippingAddress => {
+// Convert ShippingAddress to Json format for database
+const toJsonFormat = (address: ShippingAddress): Json => {
+  return address as unknown as Json;
+};
+
+// Convert from Json to ShippingAddress
+const fromJsonFormat = (json: Json): ShippingAddress => {
+  // If json is a string, try to parse it
   if (typeof json === 'string') {
     try {
       return JSON.parse(json) as ShippingAddress;
-    } catch (e) {
-      console.error('Error parsing shipping address:', e);
-      return { fullName: 'Error parsing address' };
+    } catch {
+      return { fullName: '', type: 'standard' };
     }
   }
-  
-  // If it's already an object, cast it
+  // If it's already an object, try to use it directly
   return json as unknown as ShippingAddress;
 };
 
@@ -139,8 +141,6 @@ const OrderConfirmation = () => {
           }
           
           if (orderData) {
-            console.log('Order data retrieved:', orderData);
-            
             setOrderDetails({
               id: orderData.id,
               status: orderData.status,
@@ -148,19 +148,15 @@ const OrderConfirmation = () => {
               date: new Date(orderData.created_at),
               shipping_method: orderData.shipping_method,
               total: orderData.total,
-              shipping_address: parseShippingAddress(orderData.shipping_address),
+              shipping_address: fromJsonFormat(orderData.shipping_address),
               tracking_number: orderData.tracking_number,
               items: orderData.order_items
             });
             
-            // If order status is 'pending' or 'paid', and no tracking number exists,
-            // send to Packeta for shipping processing
+            // If order status is 'pending' or 'paid', send to Packeta
             if ((orderData.status === 'pending' || orderData.status === 'paid') && 
                 !orderData.tracking_number) {
-              console.log('Order needs Packeta processing, initiating...');
               processPacketaOrder(orderData);
-            } else {
-              console.log('Order already has tracking or is not in a processable state');
             }
             
             // Clear the cart after successful order fetch
@@ -221,14 +217,15 @@ const OrderConfirmation = () => {
     }
   };
 
-  const processPacketaOrder = async (orderData: OrderData) => {
-    if (isPacketaProcessing) return; // Prevent duplicate processing
-    
+  const processPacketaOrder = async (orderData: {
+    id: number;
+    shipping_address: Json;
+    order_items: OrderItem[];
+    payment_intent_id?: string;
+  }) => {
     setIsPacketaProcessing(true);
     
     try {
-      console.log('Processing Packeta order for order ID:', orderData.id);
-      
       // Find user email
       const { data: userData } = await supabase
         .from('profiles')
@@ -245,8 +242,6 @@ const OrderConfirmation = () => {
         payment_method: orderData.payment_intent_id ? 'card' : 'cod'
       };
       
-      console.log('Sending order to Packeta with payload:', orderPayload);
-      
       const { data, error } = await invokeFunction('create-packeta-order', {
         body: orderPayload
       });
@@ -260,15 +255,6 @@ const OrderConfirmation = () => {
         });
       } else {
         console.log('Packeta order created:', data);
-        
-        // Update the order details with tracking information if available
-        if (data.packeta_id) {
-          setOrderDetails(prev => prev ? {
-            ...prev,
-            tracking_number: data.packeta_id
-          } : null);
-        }
-        
         toast({
           title: 'Order Processing',
           description: 'Your order has been received and is being prepared for shipping.',
@@ -276,11 +262,6 @@ const OrderConfirmation = () => {
       }
     } catch (err) {
       console.error('Error sending order to Packeta:', err);
-      toast({
-        title: 'Shipping Processing Error',
-        description: 'There was an error processing your shipping information. Our team has been notified.',
-        variant: 'destructive',
-      });
     } finally {
       setIsPacketaProcessing(false);
     }
@@ -318,68 +299,78 @@ const OrderConfirmation = () => {
       
       // Check if this order already exists in our database
       if (data.order_id) {
-        // Redirect to the order confirmation page with the order ID
-        // Use replace: true to prevent back button from causing an infinite loop
+        // If we have an order_id from the API, redirect to the order page with the order ID
         navigate(`/order-confirmation?orderId=${data.order_id}`, { replace: true });
+        return; // Exit the function early since we're redirecting
       } else {
-        // If no order_id was returned, we need to create one
+        // For older sessions without order_id reference, create a minimal order object
         try {
-          // Prepare shipping address data
-          let shippingAddress = {};
-          if (data.session.metadata?.shipping_address) {
-            try {
-              shippingAddress = JSON.parse(data.session.metadata.shipping_address);
-            } catch (e) {
-              console.error('Error parsing shipping address:', e);
-            }
-          }
-          
-          // Create order data
-          const orderData = {
-            shipping_address: shippingAddress,
-            total: data.session.amount_total / 100,
-            shipping_method: data.session.metadata?.shipping_method || 'standard',
-            payment_status: 'paid',
+          // Parse shipping data if available or create empty object
+          const shippingAddress: ShippingAddress = data.session.shipping ? {
+            fullName: data.session.shipping.name || '',
+            addressLine1: data.session.shipping.address?.line1 || '',
+            addressLine2: data.session.shipping.address?.line2 || '',
+            city: data.session.shipping.address?.city || '',
+            state: data.session.shipping.address?.state || '',
+            zipCode: data.session.shipping.address?.postal_code || '',
+            country: data.session.shipping.address?.country || '',
+            type: 'standard'
+          } : {
+            fullName: '',
+            type: 'standard'
           };
           
-          // Create order items from line items
-          const orderItems = data.lineItems?.map(item => {
-            // Try to extract product_id from metadata
-            let product_id = 0;
-            try {
-              if (item.price?.product?.metadata?.product_id) {
-                product_id = parseInt(item.price.product.metadata.product_id);
-              }
-            } catch (e) {
-              console.error('Error parsing product_id:', e);
-            }
+          // Create an order in the database using session data
+          const orderPayload = {
+            status: 'paid',
+            payment_intent_id: data.session.id,
+            total: data.session.amount_total / 100,
+            shipping_method: 'standard',
+            shipping_address: toJsonFormat(shippingAddress),
+            user_id: user?.id,
+            // Handle order items separately since they go into a different table
+            // We'll extract this to insert after the order is created
+          };
+          
+          // Create the order
+          const { data: createdOrder, error } = await supabase
+            .from('orders')
+            .insert(orderPayload)
+            .select('id')
+            .single();
             
-            return {
-              product_id,
-              product_name: item.description || 'Product',
-              product_price: (item.price?.unit_amount || 0) / 100,
-              quantity: item.quantity || 1
-            };
-          }) || [];
-          
-          // Call create-order function
-          const { data: orderResult, error: orderError } = await invokeFunction('create-order', {
-            body: {
-              order_data: orderData,
-              order_items: orderItems,
-              user_id: user?.id,
-              payment_intent_id: data.session.payment_intent || data.session.id
-            }
-          });
-          
-          if (orderError) {
-            throw new Error(`Error creating order: ${orderError}`);
+          if (error) {
+            console.error('Error creating order from session:', error);
+            throw new Error('Could not create order from session data');
           }
           
-          // Redirect to the order confirmation page with the new order ID
-          navigate(`/order-confirmation?orderId=${orderResult.order_id}`, { replace: true });
+          if (createdOrder?.id) {
+            // Insert order items if we have line items
+            if (data.lineItems && data.lineItems.length > 0) {
+              const orderItems = data.lineItems.map((item: LineItem) => ({
+                order_id: createdOrder.id,
+                product_id: parseInt(item.price?.product?.metadata?.product_id || '0'),
+                product_name: item.description || '',
+                product_price: (item.price?.unit_amount || 0) / 100,
+                quantity: item.quantity || 1
+              }));
+              
+              // Insert the order items
+              const { error: itemsError } = await supabase
+                .from('order_items')
+                .insert(orderItems);
+                
+              if (itemsError) {
+                console.error('Error inserting order items:', itemsError);
+              }
+            }
+            
+            // Redirect to the order confirmation page with the new order ID
+            navigate(`/order-confirmation?orderId=${createdOrder.id}`, { replace: true });
+            return;
+          }
         } catch (err) {
-          console.error('Error creating order from session:', err);
+          console.error('Error creating order:', err);
           setError('Could not create order details. Please contact customer support.');
         }
       }
