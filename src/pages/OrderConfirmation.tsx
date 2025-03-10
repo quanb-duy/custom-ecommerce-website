@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -18,6 +19,7 @@ interface OrderDetails {
   shipping_method: string;
   total: number;
   shipping_address: any;
+  tracking_number?: string;
   items?: any[];
 }
 
@@ -35,6 +37,7 @@ const OrderConfirmation = () => {
   const [error, setError] = useState<string | null>(null);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isPacketaProcessing, setIsPacketaProcessing] = useState(false);
+  const [isTrackingLoading, setIsTrackingLoading] = useState(false);
   
   useEffect(() => {
     if (!user && !orderId && !sessionId) {
@@ -84,6 +87,7 @@ const OrderConfirmation = () => {
               shipping_method: orderData.shipping_method,
               total: orderData.total,
               shipping_address: orderData.shipping_address,
+              tracking_number: orderData.tracking_number,
               items: orderData.order_items
             });
             
@@ -113,6 +117,43 @@ const OrderConfirmation = () => {
     
     fetchOrderDetails();
   }, [orderId, sessionId, user, navigate, clearCart, toast]);
+
+  const requestTracking = async () => {
+    if (!orderDetails || !user) return;
+    
+    setIsTrackingLoading(true);
+    
+    try {
+      const { data, error } = await invokeFunction('track-order', {
+        body: { order_id: orderDetails.id }
+      });
+      
+      if (error) {
+        throw new Error(`Error tracking order: ${error}`);
+      }
+      
+      if (data?.tracking_number) {
+        setOrderDetails(prev => prev ? {
+          ...prev,
+          tracking_number: data.tracking_number
+        } : null);
+        
+        toast({
+          title: "Tracking Information",
+          description: `Your tracking number is: ${data.tracking_number}`,
+        });
+      }
+    } catch (err) {
+      console.error('Error requesting tracking:', err);
+      toast({
+        title: "Tracking Error",
+        description: "Could not retrieve tracking information. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTrackingLoading(false);
+    }
+  };
 
   const processPacketaOrder = async (orderData: any) => {
     setIsPacketaProcessing(true);
@@ -198,6 +239,7 @@ const OrderConfirmation = () => {
             shipping_method, 
             shipping_address, 
             payment_intent_id, 
+            tracking_number,
             created_at,
             order_items:order_items(
               id, 
@@ -222,6 +264,7 @@ const OrderConfirmation = () => {
           shipping_method: orderData.shipping_method,
           total: orderData.total,
           shipping_address: orderData.shipping_address,
+          tracking_number: orderData.tracking_number,
           items: orderData.order_items
         });
         
@@ -326,6 +369,13 @@ const OrderConfirmation = () => {
                     <span className="text-gray-600">Total</span>
                     <span className="font-medium">${orderDetails?.total.toFixed(2)}</span>
                   </div>
+                  
+                  {orderDetails?.tracking_number && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Tracking Number</span>
+                      <span className="font-medium">{orderDetails.tracking_number}</span>
+                    </div>
+                  )}
                 </div>
                 
                 {isPacketaProcessing && (
@@ -334,6 +384,31 @@ const OrderConfirmation = () => {
                       We're processing your shipping information. This may take a moment...
                     </AlertDescription>
                   </Alert>
+                )}
+                
+                {!orderDetails?.tracking_number && orderDetails?.status !== 'pending' && (
+                  <div className="mb-4">
+                    <Button 
+                      onClick={requestTracking}
+                      disabled={isTrackingLoading}
+                      className="w-full"
+                    >
+                      {isTrackingLoading ? (
+                        <span className="flex items-center">
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Processing...
+                        </span>
+                      ) : (
+                        <span className="flex items-center">
+                          <Truck className="mr-2 h-4 w-4" />
+                          Get Tracking Information
+                        </span>
+                      )}
+                    </Button>
+                  </div>
                 )}
                 
                 <div className="pt-4 border-t border-gray-200">

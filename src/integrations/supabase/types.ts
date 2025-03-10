@@ -92,6 +92,7 @@ export type Database = {
           shipping_method: string
           status: string
           total: number
+          tracking_number: string | null
           user_id: string
         }
         Insert: {
@@ -102,6 +103,7 @@ export type Database = {
           shipping_method: string
           status?: string
           total?: number
+          tracking_number?: string | null
           user_id: string
         }
         Update: {
@@ -112,6 +114,7 @@ export type Database = {
           shipping_method?: string
           status?: string
           total?: number
+          tracking_number?: string | null
           user_id?: string
         }
         Relationships: []
@@ -191,6 +194,7 @@ export type Database = {
           created_at: string
           id: string
           is_default: boolean
+          phone: string | null
           postal_code: string
           state: string
           user_id: string
@@ -203,6 +207,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_default?: boolean
+          phone?: string | null
           postal_code: string
           state: string
           user_id: string
@@ -215,6 +220,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_default?: boolean
+          phone?: string | null
           postal_code?: string
           state?: string
           user_id?: string
