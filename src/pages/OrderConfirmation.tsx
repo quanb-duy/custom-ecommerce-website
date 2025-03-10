@@ -112,6 +112,7 @@ const OrderConfirmation = () => {
   const [isPacketaProcessing, setIsPacketaProcessing] = useState(false);
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
   const [sessionProcessed, setSessionProcessed] = useState(false);
+  const [packetaAttempted, setPacketaAttempted] = useState<Record<string, boolean>>({});
   
   useEffect(() => {
     // Check if we're processing a Stripe session but user is not authenticated
@@ -174,12 +175,22 @@ const OrderConfirmation = () => {
               items: orderData.order_items
             });
             
-            // If order status is 'pending' or 'paid', and no tracking number exists,
-            // send to Packeta for shipping processing
+            // Check if Packeta processing has already been attempted for this order
+            const orderKey = `packeta_attempted_${orderData.id}`;
+            const hasAttempted = sessionStorage.getItem(orderKey) === 'true' || packetaAttempted[orderKey];
+            
+            // If order status is 'pending' or 'paid', and no tracking number exists, and we haven't tried processing before
             if ((orderData.status === 'pending' || orderData.status === 'paid') && 
-                !orderData.tracking_number) {
+                !orderData.tracking_number && !hasAttempted) {
               console.log('Order needs Packeta processing, initiating...');
+              
+              // Mark this order as attempted in both state and sessionStorage
+              sessionStorage.setItem(orderKey, 'true');
+              setPacketaAttempted(prev => ({...prev, [orderKey]: true}));
+              
               processPacketaOrder(orderData);
+            } else if (hasAttempted && !orderData.tracking_number) {
+              console.log('Packeta processing already attempted for this order, skipping...');
             } else {
               console.log('Order already has tracking or is not in a processable state');
             }
@@ -203,7 +214,7 @@ const OrderConfirmation = () => {
     };
     
     fetchOrderDetails();
-  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed]);
+  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed, packetaAttempted]);
 
   const requestTracking = async () => {
     if (!orderDetails || !user) return;
@@ -279,6 +290,15 @@ const OrderConfirmation = () => {
           description: 'Your order has been received, but there was a delay in shipping processing. Our team will handle it shortly.',
           variant: 'default',
         });
+        
+        // Update database to mark order as needing manual Packeta processing
+        await supabase
+          .from('orders')
+          .update({
+            notes: `Packeta processing failed: ${error}`,
+            status: 'processing'
+          })
+          .eq('id', orderData.id);
       } else {
         console.log('Packeta order created:', data);
         
