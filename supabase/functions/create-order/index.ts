@@ -78,7 +78,7 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
-    // Improved JSON parsing with error handling
+    // Parse request data
     let requestData;
     try {
       const bodyText = await req.text();
@@ -120,14 +120,20 @@ serve(async (req) => {
     } = requestData;
 
     if (!order_data || !order_items || !user_id) {
-      console.error('Missing required fields in request:',
-        !order_data ? 'order_data missing' : '',
-        !order_items ? 'order_items missing' : '',
-        !user_id ? 'user_id missing' : ''
-      );
+      console.error('Missing required fields in request:', {
+        has_order_data: !!order_data,
+        has_order_items: !!order_items,
+        has_user_id: !!user_id,
+        received_data: requestData
+      });
       return new Response(
         JSON.stringify({ 
           error: 'Missing required fields',
+          missing: {
+            order_data: !order_data,
+            order_items: !order_items,
+            user_id: !user_id
+          },
           received: JSON.stringify(requestData)
         }), 
         { 
@@ -140,6 +146,7 @@ serve(async (req) => {
     console.log(`Creating order for user: ${user_id}`)
     console.log(`Order items count: ${order_items.length}`)
     console.log(`Payment intent ID: ${payment_intent_id}`)
+    console.log('Order data:', order_data)
 
     // Handle manual payment mode
     const isManualPayment = payment_intent_id === 'manual-payment-required';

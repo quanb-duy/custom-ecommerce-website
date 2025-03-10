@@ -69,17 +69,31 @@ interface OrderData {
 
 // Helper function to convert Json to ShippingAddress
 const parseShippingAddress = (json: Json): ShippingAddress => {
+  if (!json) {
+    return { fullName: 'Unknown' };
+  }
+  
   if (typeof json === 'string') {
     try {
       return JSON.parse(json) as ShippingAddress;
     } catch (e) {
-      console.error('Error parsing shipping address:', e);
+      console.error('Error parsing shipping address from string:', e);
       return { fullName: 'Error parsing address' };
     }
   }
   
-  // If it's already an object, cast it
-  return json as unknown as ShippingAddress;
+  // If it's already an object (but might be a plain object, not ShippingAddress),
+  // ensure it has at least the required fields
+  if (typeof json === 'object' && json !== null) {
+    // If it's an object but missing fullName, add a default one
+    if (!('fullName' in json) && typeof json === 'object') {
+      return { ...json as object, fullName: 'Unknown Customer' } as ShippingAddress;
+    }
+    return json as unknown as ShippingAddress;
+  }
+  
+  // Fallback
+  return { fullName: 'Invalid address data' };
 };
 
 const OrderConfirmation = () => {
@@ -324,14 +338,30 @@ const OrderConfirmation = () => {
       } else {
         // If no order_id was returned, we need to create one
         try {
+          console.log('No order_id returned from verification, attempting to create order', {
+            session: data.session,
+            lineItems: data.lineItems
+          });
+          
+          // Check if we have the necessary data
+          if (!user?.id) {
+            throw new Error('User not authenticated');
+          }
+          
+          if (!data.session?.payment_intent) {
+            console.warn('No payment_intent in session, using session ID as fallback');
+          }
+          
           // Prepare shipping address data
           let shippingAddress = {};
           if (data.session.metadata?.shipping_address) {
             try {
               shippingAddress = JSON.parse(data.session.metadata.shipping_address);
             } catch (e) {
-              console.error('Error parsing shipping address:', e);
+              console.error('Error parsing shipping address from metadata:', e);
             }
+          } else {
+            console.warn('No shipping_address in session metadata');
           }
           
           // Create order data
@@ -341,6 +371,8 @@ const OrderConfirmation = () => {
             shipping_method: data.session.metadata?.shipping_method || 'standard',
             payment_status: 'paid',
           };
+          
+          console.log('Creating order with data:', orderData);
           
           // Create order items from line items
           const orderItems = data.lineItems?.map(item => {
@@ -362,19 +394,24 @@ const OrderConfirmation = () => {
             };
           }) || [];
           
+          console.log('With order items:', orderItems);
+          
           // Call create-order function
           const { data: orderResult, error: orderError } = await invokeFunction('create-order', {
             body: {
               order_data: orderData,
               order_items: orderItems,
-              user_id: user?.id,
+              user_id: user.id,
               payment_intent_id: data.session.payment_intent || data.session.id
             }
           });
           
           if (orderError) {
+            console.error('create-order function error:', orderError);
             throw new Error(`Error creating order: ${orderError}`);
           }
+          
+          console.log('Order created successfully:', orderResult);
           
           // Redirect to the order confirmation page with the new order ID
           navigate(`/order-confirmation?orderId=${orderResult.order_id}`, { replace: true });

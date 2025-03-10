@@ -718,6 +718,8 @@ const Checkout = () => {
                         onPaymentError={handlePaymentError}
                         disabled={isLoading}
                         cartItems={cartItems}
+                        shippingAddress={shippingAddress}
+                        shippingMethod={shippingMethod}
                       />
                       
                       <div className="text-center mt-4">
