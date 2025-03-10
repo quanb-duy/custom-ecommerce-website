@@ -112,7 +112,6 @@ const OrderConfirmation = () => {
   const [isPacketaProcessing, setIsPacketaProcessing] = useState(false);
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
   const [sessionProcessed, setSessionProcessed] = useState(false);
-  const [packetaAttempted, setPacketaAttempted] = useState<Record<string, boolean>>({});
   
   useEffect(() => {
     // Check if we're processing a Stripe session but user is not authenticated
@@ -177,16 +176,15 @@ const OrderConfirmation = () => {
             
             // Check if Packeta processing has already been attempted for this order
             const orderKey = `packeta_attempted_${orderData.id}`;
-            const hasAttempted = sessionStorage.getItem(orderKey) === 'true' || packetaAttempted[orderKey];
+            const hasAttempted = sessionStorage.getItem(orderKey) === 'true';
             
             // If order status is 'pending' or 'paid', and no tracking number exists, and we haven't tried processing before
             if ((orderData.status === 'pending' || orderData.status === 'paid') && 
                 !orderData.tracking_number && !hasAttempted) {
               console.log('Order needs Packeta processing, initiating...');
               
-              // Mark this order as attempted in both state and sessionStorage
+              // Mark this order as attempted in sessionStorage
               sessionStorage.setItem(orderKey, 'true');
-              setPacketaAttempted(prev => ({...prev, [orderKey]: true}));
               
               processPacketaOrder(orderData);
             } else if (hasAttempted && !orderData.tracking_number) {
@@ -214,7 +212,7 @@ const OrderConfirmation = () => {
     };
     
     fetchOrderDetails();
-  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed, packetaAttempted]);
+  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed]);
 
   const requestTracking = async () => {
     if (!orderDetails || !user) return;
@@ -331,6 +329,9 @@ const OrderConfirmation = () => {
     try {
       console.log('Processing Stripe session:', sessionId);
       
+      // Set flag to prevent infinite loop immediately
+      setSessionProcessed(true);
+      
       // Ensure user is authenticated
       if (!user || !user.id) {
         throw new Error("Authentication required to process your order");
@@ -351,9 +352,6 @@ const OrderConfirmation = () => {
       
       console.log('Session verified:', data);
       
-      // Set flag to prevent infinite loop
-      setSessionProcessed(true);
-      
       // Clear the cart after successful payment
       clearCart();
       
@@ -366,7 +364,11 @@ const OrderConfirmation = () => {
       if (data.order_id) {
         // Redirect to the order confirmation page with the order ID
         // Use replace: true to prevent back button from causing an infinite loop
-        navigate(`/order-confirmation?orderId=${data.order_id}`, { replace: true });
+        // Clear the session_id to prevent re-processing
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.delete('session_id');
+        currentUrl.searchParams.set('orderId', data.order_id.toString());
+        navigate(currentUrl.pathname + currentUrl.search, { replace: true });
       } else {
         // If no order_id was returned, we need to create one
         try {
@@ -446,7 +448,10 @@ const OrderConfirmation = () => {
           console.log('Order created successfully:', orderResult);
           
           // Redirect to the order confirmation page with the new order ID
-          navigate(`/order-confirmation?orderId=${orderResult.order_id}`, { replace: true });
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.delete('session_id');
+          currentUrl.searchParams.set('orderId', orderResult.order_id.toString());
+          navigate(currentUrl.pathname + currentUrl.search, { replace: true });
         } catch (err) {
           console.error('Error creating order from session:', err);
           setError('Could not create order details. Please contact customer support.');
