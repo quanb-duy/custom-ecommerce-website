@@ -6,12 +6,34 @@ import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { CartItem } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 
-interface StripePaymentFormProps {
-  amount: number;
-  onPaymentSuccess: (paymentIntentId: string) => void;
-  onPaymentError: (error: string) => void;
-  disabled?: boolean;
-  cartItems?: CartItem[]; // Use the proper CartItem type
+interface ShippingAddressType {
+  fullName?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
+  phone?: string;
+  type?: string;
+  pickupPoint?: {
+    id: string;
+    name: string;
+    address: string;
+    zip: string;
+    city: string;
+  };
+  billingAddress?: {
+    fullName: string;
+    addressLine1: string;
+    addressLine2?: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    phone?: string;
+  };
+  [key: string]: any; // For additional properties
 }
 
 interface CheckoutItem {
@@ -22,18 +44,30 @@ interface CheckoutItem {
   images?: string[];
 }
 
+interface StripePaymentFormProps {
+  amount: number;
+  onPaymentSuccess: (paymentIntentId: string) => void;
+  onPaymentError: (error: string) => void;
+  disabled?: boolean;
+  cartItems?: CartItem[];
+  shippingMethod?: string;
+  shippingAddress?: ShippingAddressType;
+}
+
 export const StripePaymentForm = ({ 
   amount, 
   onPaymentSuccess, 
   onPaymentError, 
   disabled,
-  cartItems = []
+  cartItems = [],
+  shippingMethod = 'standard',
+  shippingAddress = {}
 }: StripePaymentFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { post: invokeFunction } = useSupabaseFunctions();
-  const { user } = useAuth(); // Get the current user
+  const { user } = useAuth();
   
   const handleStripeCheckout = async () => {
     try {
@@ -66,6 +100,9 @@ export const StripePaymentForm = ({
         });
       }
       
+      // Prepare shipping address for metadata
+      const shippingAddressStr = JSON.stringify(shippingAddress);
+      
       // Create a checkout session
       const { data, error: sessionError } = await invokeFunction('create-checkout-session', {
         body: {
@@ -74,7 +111,9 @@ export const StripePaymentForm = ({
           cancel_url: `${window.location.origin}/checkout?canceled=true`,
           metadata: {
             order_id: new Date().getTime().toString(), // Timestamp as temporary order_id
-            user_id: user.id // Add the user_id to metadata
+            user_id: user.id, // Add the user_id to metadata
+            shipping_method: shippingMethod,
+            shipping_address: shippingAddressStr
           }
         }
       });

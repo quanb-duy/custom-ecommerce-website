@@ -17,6 +17,19 @@ import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 
+interface UserAddress {
+  id: string;
+  user_id: string;
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  phone?: string;
+  is_default: boolean;
+}
+
 interface ShippingAddress {
   fullName: string;
   addressLine1: string;
@@ -63,7 +76,7 @@ const Checkout = () => {
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [showPacketaRequiredError, setShowPacketaRequiredError] = useState(false);
-  const [userAddresses, setUserAddresses] = useState<any[]>([]);
+  const [userAddresses, setUserAddresses] = useState<UserAddress[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
 
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
@@ -224,53 +237,41 @@ const Checkout = () => {
   const validateShippingInfo = () => {
     const errors: ValidationErrors = {};
     
-    if (shippingMethod !== 'packeta') {
-      if (!shippingAddress.fullName.trim()) {
-        errors.fullName = "Full name is required";
-      }
-      
-      if (!shippingAddress.addressLine1.trim()) {
-        errors.addressLine1 = "Address is required";
-      }
-      
-      if (!shippingAddress.city.trim()) {
-        errors.city = "City is required";
-      }
-      
-      if (!shippingAddress.state.trim()) {
-        errors.state = "State is required";
-      }
-      
-      if (!shippingAddress.zipCode.trim()) {
-        errors.zipCode = "Zip code is required";
-      } else if (!validateZipCode(shippingAddress.zipCode)) {
-        errors.zipCode = "Invalid zip code format";
-      }
-      
-      if (!shippingAddress.country.trim()) {
-        errors.country = "Country is required";
-      }
-      
-      if (!shippingAddress.phone.trim()) {
-        errors.phone = "Phone number is required";
-      } else if (!validatePhoneNumber(shippingAddress.phone)) {
-        errors.phone = "Invalid phone number format";
-      }
-    } else {
-      if (!packetaPoint) {
-        setShowPacketaRequiredError(true);
-        return false;
-      }
-      
-      if (!shippingAddress.fullName.trim()) {
-        errors.fullName = "Full name is required";
-      }
-      
-      if (!shippingAddress.phone.trim()) {
-        errors.phone = "Phone number is required";
-      } else if (!validatePhoneNumber(shippingAddress.phone)) {
-        errors.phone = "Invalid phone number format";
-      }
+    // For all shipping methods, validate the billing/shipping address
+    if (!shippingAddress.fullName.trim()) {
+      errors.fullName = "Full name is required";
+    }
+    
+    if (!shippingAddress.addressLine1.trim()) {
+      errors.addressLine1 = "Address is required";
+    }
+    
+    if (!shippingAddress.city.trim()) {
+      errors.city = "City is required";
+    }
+    
+    if (!shippingAddress.state.trim()) {
+      errors.state = "State is required";
+    }
+    
+    if (!shippingAddress.zipCode.trim()) {
+      errors.zipCode = "Zip code is required";
+    } else if (!validateZipCode(shippingAddress.zipCode)) {
+      errors.zipCode = "Invalid zip code format";
+    }
+    
+    if (!shippingAddress.country.trim()) {
+      errors.country = "Country is required";
+    }
+    
+    if (shippingAddress.phone.trim() && !validatePhoneNumber(shippingAddress.phone)) {
+      errors.phone = "Invalid phone number format";
+    }
+    
+    // For Packeta shipping, also check if a pickup point is selected
+    if (shippingMethod === 'packeta' && !packetaPoint) {
+      setShowPacketaRequiredError(true);
+      return false;
     }
     
     setValidationErrors(errors);
@@ -308,12 +309,23 @@ const Checkout = () => {
     try {
       console.log('Creating order with payment ID:', paymentId);
       
+      // For Packeta shipping, include both pickup point and billing address
       const shippingAddressData = shippingMethod === 'packeta' 
         ? {
             type: 'packeta',
             pickupPoint: packetaPoint,
-            fullName: shippingAddress.fullName || user.email,
+            fullName: shippingAddress.fullName,
             phone: shippingAddress.phone || '',
+            billingAddress: {
+              fullName: shippingAddress.fullName,
+              addressLine1: shippingAddress.addressLine1,
+              addressLine2: shippingAddress.addressLine2,
+              city: shippingAddress.city,
+              state: shippingAddress.state,
+              zipCode: shippingAddress.zipCode,
+              country: shippingAddress.country,
+              phone: shippingAddress.phone || ''
+            }
           }
         : shippingAddress;
       
@@ -464,7 +476,7 @@ const Checkout = () => {
                       
                       <div className="mt-4 space-y-4">
                         <div>
-                          <Label htmlFor="pickupFullName">Full Name</Label>
+                          <Label htmlFor="pickupFullName">Recipient Full Name</Label>
                           <Input
                             id="pickupFullName"
                             name="fullName"
@@ -478,7 +490,7 @@ const Checkout = () => {
                         </div>
                         
                         <div>
-                          <Label htmlFor="pickupPhone">Phone Number</Label>
+                          <Label htmlFor="pickupPhone">Recipient Phone Number</Label>
                           <Input
                             id="pickupPhone"
                             name="phone"
@@ -497,165 +509,166 @@ const Checkout = () => {
                   </Card>
                 )}
                 
-                {(shippingMethod === 'standard' || shippingMethod === 'express') && (
-                  <Card className="mb-8">
-                    <CardContent className="pt-6">
-                      <h2 className="text-xl font-medium mb-4">Shipping Address</h2>
-                      
-                      {userAddresses.length > 0 && (
-                        <div className="mb-6">
-                          <h3 className="text-sm font-medium mb-2">Saved Addresses</h3>
-                          <div className="space-y-2">
-                            {userAddresses.map(address => (
-                              <div 
-                                key={address.id}
-                                className={`border rounded-md p-3 cursor-pointer hover:bg-gray-50 ${
-                                  selectedAddress === address.id ? 'border-primary bg-gray-50' : ''
-                                }`}
-                                onClick={() => handleAddressSelect(address.id)}
-                              >
-                                <div className="flex justify-between">
-                                  <div>
-                                    <p className="font-medium">{address.address_line1}</p>
+                {/* Billing Address Form - Show for all shipping methods */}
+                <Card className="mb-8">
+                  <CardContent className="pt-6">
+                    <h2 className="text-xl font-medium mb-4">
+                      {shippingMethod === 'packeta' ? 'Billing Address' : 'Shipping Address'}
+                    </h2>
+                    
+                    {userAddresses.length > 0 && (
+                      <div className="mb-6">
+                        <h3 className="text-sm font-medium mb-2">Saved Addresses</h3>
+                        <div className="space-y-2">
+                          {userAddresses.map(address => (
+                            <div 
+                              key={address.id}
+                              className={`border rounded-md p-3 cursor-pointer hover:bg-gray-50 ${
+                                selectedAddress === address.id ? 'border-primary bg-gray-50' : ''
+                              }`}
+                              onClick={() => handleAddressSelect(address.id)}
+                            >
+                              <div className="flex justify-between">
+                                <div>
+                                  <p className="font-medium">{address.address_line1}</p>
+                                  <p className="text-sm text-gray-600">
+                                    {address.city}, {address.state} {address.postal_code}
+                                  </p>
+                                  {address.phone && (
                                     <p className="text-sm text-gray-600">
-                                      {address.city}, {address.state} {address.postal_code}
+                                      Phone: {address.phone}
                                     </p>
-                                    {address.phone && (
-                                      <p className="text-sm text-gray-600">
-                                        Phone: {address.phone}
-                                      </p>
-                                    )}
-                                  </div>
-                                  {address.is_default && (
-                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">Default</span>
                                   )}
                                 </div>
+                                {address.is_default && (
+                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">Default</span>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                          <p className="text-xs text-gray-500 mt-2">
-                            Click an address to select it, or fill in the form below to use a new address.
-                          </p>
-                          <Separator className="my-4" />
+                            </div>
+                          ))}
                         </div>
-                      )}
+                        <p className="text-xs text-gray-500 mt-2">
+                          Click an address to select it, or fill in the form below to use a new address.
+                        </p>
+                        <Separator className="my-4" />
+                      </div>
+                    )}
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="fullName">Full Name</Label>
+                        <Input
+                          id="fullName"
+                          name="fullName"
+                          value={shippingAddress.fullName}
+                          onChange={handleInputChange}
+                          className={validationErrors.fullName ? "border-red-500" : ""}
+                        />
+                        {validationErrors.fullName && (
+                          <p className="text-red-500 text-sm mt-1">{validationErrors.fullName}</p>
+                        )}
+                      </div>
                       
-                      <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="addressLine1">Address Line 1</Label>
+                        <Input
+                          id="addressLine1"
+                          name="addressLine1"
+                          value={shippingAddress.addressLine1}
+                          onChange={handleInputChange}
+                          className={validationErrors.addressLine1 ? "border-red-500" : ""}
+                        />
+                        {validationErrors.addressLine1 && (
+                          <p className="text-red-500 text-sm mt-1">{validationErrors.addressLine1}</p>
+                        )}
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="addressLine2">Address Line 2 (Optional)</Label>
+                        <Input
+                          id="addressLine2"
+                          name="addressLine2"
+                          value={shippingAddress.addressLine2}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="fullName">Full Name</Label>
+                          <Label htmlFor="city">City</Label>
                           <Input
-                            id="fullName"
-                            name="fullName"
-                            value={shippingAddress.fullName}
+                            id="city"
+                            name="city"
+                            value={shippingAddress.city}
                             onChange={handleInputChange}
-                            className={validationErrors.fullName ? "border-red-500" : ""}
+                            className={validationErrors.city ? "border-red-500" : ""}
                           />
-                          {validationErrors.fullName && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.fullName}</p>
+                          {validationErrors.city && (
+                            <p className="text-red-500 text-sm mt-1">{validationErrors.city}</p>
                           )}
                         </div>
-                        
                         <div>
-                          <Label htmlFor="addressLine1">Address Line 1</Label>
+                          <Label htmlFor="state">State/Province</Label>
                           <Input
-                            id="addressLine1"
-                            name="addressLine1"
-                            value={shippingAddress.addressLine1}
+                            id="state"
+                            name="state"
+                            value={shippingAddress.state}
                             onChange={handleInputChange}
-                            className={validationErrors.addressLine1 ? "border-red-500" : ""}
+                            className={validationErrors.state ? "border-red-500" : ""}
                           />
-                          {validationErrors.addressLine1 && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.addressLine1}</p>
-                          )}
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor="addressLine2">Address Line 2 (Optional)</Label>
-                          <Input
-                            id="addressLine2"
-                            name="addressLine2"
-                            value={shippingAddress.addressLine2}
-                            onChange={handleInputChange}
-                          />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="city">City</Label>
-                            <Input
-                              id="city"
-                              name="city"
-                              value={shippingAddress.city}
-                              onChange={handleInputChange}
-                              className={validationErrors.city ? "border-red-500" : ""}
-                            />
-                            {validationErrors.city && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.city}</p>
-                            )}
-                          </div>
-                          <div>
-                            <Label htmlFor="state">State/Province</Label>
-                            <Input
-                              id="state"
-                              name="state"
-                              value={shippingAddress.state}
-                              onChange={handleInputChange}
-                              className={validationErrors.state ? "border-red-500" : ""}
-                            />
-                            {validationErrors.state && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.state}</p>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="zipCode">Postal/Zip Code</Label>
-                            <Input
-                              id="zipCode"
-                              name="zipCode"
-                              value={shippingAddress.zipCode}
-                              onChange={handleInputChange}
-                              className={validationErrors.zipCode ? "border-red-500" : ""}
-                            />
-                            {validationErrors.zipCode && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.zipCode}</p>
-                            )}
-                          </div>
-                          <div>
-                            <Label htmlFor="country">Country</Label>
-                            <Input
-                              id="country"
-                              name="country"
-                              value={shippingAddress.country}
-                              onChange={handleInputChange}
-                              className={validationErrors.country ? "border-red-500" : ""}
-                            />
-                            {validationErrors.country && (
-                              <p className="text-red-500 text-sm mt-1">{validationErrors.country}</p>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor="phone">Phone Number</Label>
-                          <Input
-                            id="phone"
-                            name="phone"
-                            type="tel"
-                            value={shippingAddress.phone}
-                            onChange={handleInputChange}
-                            className={validationErrors.phone ? "border-red-500" : ""}
-                            placeholder="e.g. +1 (555) 123-4567"
-                          />
-                          {validationErrors.phone && (
-                            <p className="text-red-500 text-sm mt-1">{validationErrors.phone}</p>
+                          {validationErrors.state && (
+                            <p className="text-red-500 text-sm mt-1">{validationErrors.state}</p>
                           )}
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="zipCode">Postal/Zip Code</Label>
+                          <Input
+                            id="zipCode"
+                            name="zipCode"
+                            value={shippingAddress.zipCode}
+                            onChange={handleInputChange}
+                            className={validationErrors.zipCode ? "border-red-500" : ""}
+                          />
+                          {validationErrors.zipCode && (
+                            <p className="text-red-500 text-sm mt-1">{validationErrors.zipCode}</p>
+                          )}
+                        </div>
+                        <div>
+                          <Label htmlFor="country">Country</Label>
+                          <Input
+                            id="country"
+                            name="country"
+                            value={shippingAddress.country}
+                            onChange={handleInputChange}
+                            className={validationErrors.country ? "border-red-500" : ""}
+                          />
+                          {validationErrors.country && (
+                            <p className="text-red-500 text-sm mt-1">{validationErrors.country}</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="phone">Phone Number</Label>
+                        <Input
+                          id="phone"
+                          name="phone"
+                          type="tel"
+                          value={shippingAddress.phone}
+                          onChange={handleInputChange}
+                          className={validationErrors.phone ? "border-red-500" : ""}
+                          placeholder="e.g. +1 (555) 123-4567"
+                        />
+                        {validationErrors.phone && (
+                          <p className="text-red-500 text-sm mt-1">{validationErrors.phone}</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
                 
                 <Button type="submit" className="w-full">
                   Continue to Payment
@@ -704,6 +717,27 @@ const Checkout = () => {
                         onPaymentError={handlePaymentError}
                         disabled={isLoading}
                         cartItems={cartItems}
+                        shippingMethod={shippingMethod}
+                        shippingAddress={
+                          shippingMethod === 'packeta' 
+                            ? {
+                                type: 'packeta',
+                                pickupPoint: packetaPoint,
+                                fullName: shippingAddress.fullName,
+                                phone: shippingAddress.phone || '',
+                                billingAddress: {
+                                  fullName: shippingAddress.fullName,
+                                  addressLine1: shippingAddress.addressLine1,
+                                  addressLine2: shippingAddress.addressLine2,
+                                  city: shippingAddress.city,
+                                  state: shippingAddress.state,
+                                  zipCode: shippingAddress.zipCode,
+                                  country: shippingAddress.country,
+                                  phone: shippingAddress.phone || ''
+                                }
+                              }
+                            : shippingAddress
+                        }
                       />
                       
                       <div className="text-center mt-4">

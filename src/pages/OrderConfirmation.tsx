@@ -10,6 +10,53 @@ import { useCart } from '@/contexts/CartContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
+interface OrderItem {
+  id: number;
+  product_id: number;
+  product_name: string;
+  product_price: number;
+  quantity: number;
+}
+
+interface PacketaPoint {
+  id: string;
+  name: string;
+  address: string;
+  zip: string;
+  city: string;
+}
+
+interface BillingAddress {
+  fullName: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+  phone?: string;
+}
+
+interface ShippingAddress {
+  // Standard shipping address
+  fullName?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
+  phone?: string;
+  
+  // Packeta specific fields
+  type?: 'packeta';
+  pickupPoint?: PacketaPoint;
+  billingAddress?: BillingAddress;
+  
+  // For handling deserialization from database
+  [key: string]: any;
+}
+
 interface OrderDetails {
   id: string | number;
   status: string;
@@ -17,9 +64,9 @@ interface OrderDetails {
   date: Date;
   shipping_method: string;
   total: number;
-  shipping_address: any;
+  shipping_address: ShippingAddress;
   tracking_number?: string;
-  items?: any[];
+  items?: OrderItem[];
 }
 
 const OrderConfirmation = () => {
@@ -61,6 +108,7 @@ const OrderConfirmation = () => {
     
     const fetchOrderDetails = async () => {
       setIsLoading(true);
+      setError(null); // Reset error state at the beginning
       
       try {
         // Try fetching the order from the orderId in URL parameters
@@ -96,6 +144,17 @@ const OrderConfirmation = () => {
           if (orderData) {
             console.log('Order data retrieved:', orderData);
             
+            // Parse shipping_address if it's a string
+            let shippingAddress = orderData.shipping_address;
+            if (typeof shippingAddress === 'string') {
+              try {
+                shippingAddress = JSON.parse(shippingAddress);
+              } catch (e) {
+                console.error('Error parsing shipping address:', e);
+                shippingAddress = { error: 'Failed to parse shipping address' };
+              }
+            }
+            
             setOrderDetails({
               id: orderData.id,
               status: orderData.status,
@@ -103,14 +162,20 @@ const OrderConfirmation = () => {
               date: new Date(orderData.created_at),
               shipping_method: orderData.shipping_method,
               total: orderData.total,
-              shipping_address: orderData.shipping_address,
+              shipping_address: shippingAddress as ShippingAddress,
               tracking_number: orderData.tracking_number,
               items: orderData.order_items
             });
             
             // If this is a Packeta order without a tracking number, process it
             if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
-              await processPacketaOrder(orderData);
+              await processPacketaOrder({
+                id: orderData.id,
+                shipping_address: shippingAddress as ShippingAddress,
+                shipping_method: orderData.shipping_method,
+                payment_intent_id: orderData.payment_intent_id,
+                order_items: orderData.order_items
+              });
             }
             
             // Clear the cart after successful order fetch
@@ -126,6 +191,89 @@ const OrderConfirmation = () => {
         else if (!orderId && !sessionId) {
           console.error('No order information provided');
           throw new Error('No order information provided');
+        } 
+        // Session processed but no order details yet - check for recent orders
+        else if (sessionId && sessionProcessed && !orderId && user) {
+          console.log('Session was processed, but no order ID yet. Checking for recent orders...');
+          
+          // Add a small delay to allow the order to be created in the database
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          
+          // Check for recently created orders for this user
+          const { data: recentOrders, error: recentOrdersError } = await supabase
+            .from('orders')
+            .select(`
+              id, 
+              status, 
+              total, 
+              shipping_method, 
+              shipping_address, 
+              payment_intent_id, 
+              tracking_number,
+              created_at,
+              order_items:order_items(
+                id, 
+                product_id, 
+                product_name, 
+                product_price, 
+                quantity
+              )
+            `)
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+            
+          if (recentOrdersError) {
+            console.error('Error checking recent orders:', recentOrdersError);
+          } else if (recentOrders && recentOrders.length > 0) {
+            const orderData = recentOrders[0];
+            console.log('Found recent order:', orderData);
+            
+            // Update URL with orderId and remove sessionId for better bookmarking
+            const url = new URL(window.location.href);
+            url.searchParams.delete('session_id');
+            url.searchParams.set('orderId', orderData.id.toString());
+            window.history.replaceState({}, '', url.toString());
+            
+            // Parse shipping_address if it's a string
+            let shippingAddress = orderData.shipping_address;
+            if (typeof shippingAddress === 'string') {
+              try {
+                shippingAddress = JSON.parse(shippingAddress);
+              } catch (e) {
+                console.error('Error parsing shipping address:', e);
+                shippingAddress = { error: 'Failed to parse shipping address' };
+              }
+            }
+            
+            setOrderDetails({
+              id: orderData.id,
+              status: orderData.status,
+              paymentMethod: orderData.payment_intent_id ? 'Card' : 'Cash on Delivery',
+              date: new Date(orderData.created_at),
+              shipping_method: orderData.shipping_method,
+              total: orderData.total,
+              shipping_address: shippingAddress as ShippingAddress,
+              tracking_number: orderData.tracking_number,
+              items: orderData.order_items
+            });
+            
+            // If this is a Packeta order without a tracking number, process it
+            if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
+              await processPacketaOrder({
+                id: orderData.id,
+                shipping_address: shippingAddress as ShippingAddress,
+                shipping_method: orderData.shipping_method,
+                payment_intent_id: orderData.payment_intent_id,
+                order_items: orderData.order_items
+              });
+            }
+            
+            clearCart();
+          } else {
+            console.error('No recent orders found after session processing');
+            throw new Error('Your payment was successful, but we could not find your order. Please contact customer support.');
+          }
         }
       } catch (err) {
         console.error('Error loading order details:', err);
@@ -175,7 +323,13 @@ const OrderConfirmation = () => {
     }
   };
 
-  const processPacketaOrder = async (orderData: any) => {
+  const processPacketaOrder = async (orderData: {
+    id: number;
+    shipping_address: ShippingAddress;
+    shipping_method: string;
+    payment_intent_id?: string;
+    order_items?: OrderItem[];
+  }) => {
     setIsPacketaProcessing(true);
     
     try {
@@ -320,6 +474,9 @@ const OrderConfirmation = () => {
         // Use history.replaceState to update URL without navigation
         window.history.replaceState({}, '', url.toString());
         
+        // Add a small delay to ensure the order is saved in the database
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         // Fetch the order details
         const { data: orderData, error: orderError } = await supabase
           .from('orders')
@@ -345,11 +502,24 @@ const OrderConfirmation = () => {
           
         if (orderError) {
           console.error('Error fetching order:', orderError);
-          throw new Error('Could not find order details');
+          // Don't throw an error here, let the component try to find recent orders instead
+          // We'll set a flag to indicate that the component should try to recover
+          return;
         }
         
         if (orderData) {
           console.log('Order data retrieved:', orderData);
+          
+          // Parse shipping_address if it's a string
+          let shippingAddress = orderData.shipping_address;
+          if (typeof shippingAddress === 'string') {
+            try {
+              shippingAddress = JSON.parse(shippingAddress);
+            } catch (e) {
+              console.error('Error parsing shipping address:', e);
+              shippingAddress = { error: 'Failed to parse shipping address' };
+            }
+          }
           
           setOrderDetails({
             id: orderData.id,
@@ -358,19 +528,25 @@ const OrderConfirmation = () => {
             date: new Date(orderData.created_at),
             shipping_method: orderData.shipping_method,
             total: orderData.total,
-            shipping_address: orderData.shipping_address,
+            shipping_address: shippingAddress as ShippingAddress,
             tracking_number: orderData.tracking_number,
             items: orderData.order_items
           });
           
           // If this is a Packeta order without a tracking number, process it
           if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
-            await processPacketaOrder(orderData);
+            await processPacketaOrder({
+              id: orderData.id,
+              shipping_address: shippingAddress as ShippingAddress,
+              shipping_method: orderData.shipping_method,
+              payment_intent_id: orderData.payment_intent_id,
+              order_items: orderData.order_items
+            });
           }
         }
       } else {
         console.error('No order_id in response:', data);
-        throw new Error('No order ID returned from payment verification');
+        // Let the component try to recover by finding the most recent order
       }
     } catch (err) {
       console.error('Error processing Stripe session:', err);
