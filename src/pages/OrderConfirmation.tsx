@@ -54,7 +54,7 @@ interface ShippingAddress {
   billingAddress?: BillingAddress;
   
   // For handling deserialization from database
-  [key: string]: any;
+  [key: string]: string | number | boolean | object | undefined;
 }
 
 interface OrderDetails {
@@ -427,37 +427,18 @@ const OrderConfirmation = () => {
       // Verify the session with Stripe - Add explicit console logging for debugging
       console.log('Calling verify-checkout-session with:', { sessionId, user_id: user.id });
       
-      // Call Edge Function directly with explicit JSON stringify for debugging
-      const response = await fetch(`${window.location.origin}/functions/v1/verify-checkout-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
+      // Use invokeFunction helper instead of direct fetch
+      const { data, error: verifyError } = await invokeFunction('verify-checkout-session', {
+        body: { 
           sessionId,
           user_id: user.id
-        })
+        }
       });
       
-      // Log raw response
-      console.log('Raw Edge Function response:', response.status, response.statusText);
-      
-      // Try to parse the response
-      let data;
-      try {
-        data = await response.json();
-        console.log('Parsed Edge Function response:', data);
-      } catch (parseError) {
-        console.error('Error parsing Edge Function response:', parseError);
-        const rawText = await response.text();
-        console.log('Raw response text:', rawText);
-        throw new Error(`Failed to parse Edge Function response: ${parseError}`);
-      }
-      
-      // Check for errors
-      if (!response.ok) {
-        console.error('Edge Function error:', data);
-        throw new Error(`Session verification failed: ${data.error || response.statusText}`);
+      // Check for errors from the function call
+      if (verifyError) {
+        console.error('Session verification error:', verifyError);
+        throw new Error(`Session verification failed: ${verifyError}`);
       }
       
       // Process successful response
@@ -472,7 +453,7 @@ const OrderConfirmation = () => {
       });
       
       // Check if we have an order ID
-      if (data.order_id) {
+      if (data?.order_id) {
         console.log(`Order created with ID: ${data.order_id}`);
         
         // Update URL with orderId and remove sessionId

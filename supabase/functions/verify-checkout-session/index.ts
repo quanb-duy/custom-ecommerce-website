@@ -128,14 +128,47 @@ serve(async (req) => {
       let shipping_address = {};
       try {
         if (session.metadata?.shipping_address) {
-          shipping_address = JSON.parse(session.metadata.shipping_address);
-          console.log('Parsed shipping address:', shipping_address);
+          console.log('Raw shipping_address from metadata:', session.metadata.shipping_address);
+          
+          // Try to parse the shipping address
+          try {
+            shipping_address = JSON.parse(session.metadata.shipping_address);
+            console.log('Successfully parsed shipping address:', shipping_address);
+          } catch (parseError) {
+            console.error('Error parsing shipping_address JSON:', parseError);
+            
+            // If it's already an object, use it directly
+            if (typeof session.metadata.shipping_address === 'object') {
+              shipping_address = session.metadata.shipping_address;
+              console.log('Using shipping_address object directly:', shipping_address);
+            } else {
+              console.error('Failed to parse shipping_address and it is not an object:', 
+                typeof session.metadata.shipping_address);
+            }
+          }
         } else {
           console.warn('No shipping_address found in metadata, using empty object');
         }
       } catch (e) {
-        console.error('Error parsing shipping_address:', e);
-        shipping_address = { error: 'Failed to parse shipping address' };
+        console.error('Error handling shipping_address:', e);
+        shipping_address = { error: 'Failed to process shipping address' };
+      }
+      
+      // Log shipping address details for debugging
+      if (shipping_address) {
+        if (typeof shipping_address === 'object') {
+          console.log('Final shipping_address type:', shipping_address.type || 'standard');
+          
+          if (shipping_address.type === 'packeta' && shipping_address.pickupPoint) {
+            console.log('Packeta pickup point found:', shipping_address.pickupPoint);
+          }
+          
+          if (shipping_address.billingAddress) {
+            console.log('Billing address found:', shipping_address.billingAddress);
+          }
+        } else {
+          console.error('Unexpected shipping_address type:', typeof shipping_address);
+        }
       }
       
       // Get user_id from metadata or from the request

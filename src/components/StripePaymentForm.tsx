@@ -33,7 +33,8 @@ interface ShippingAddressType {
     country: string;
     phone?: string;
   };
-  [key: string]: any; // For additional properties
+  // For additional properties
+  [key: string]: string | number | boolean | object | undefined;
 }
 
 interface CheckoutItem {
@@ -100,8 +101,22 @@ export const StripePaymentForm = ({
         });
       }
       
-      // Prepare shipping address for metadata
-      const shippingAddressStr = JSON.stringify(shippingAddress);
+      // Ensure the shipping address is properly processed for metadata
+      const processedShippingAddress = { ...shippingAddress };
+      
+      // If it has a pickupPoint, ensure it's properly serialized
+      if (processedShippingAddress.pickupPoint) {
+        console.log('Including Packeta pickup point in metadata:', processedShippingAddress.pickupPoint);
+      }
+      
+      // If it has a billingAddress, ensure it's included
+      if (processedShippingAddress.billingAddress) {
+        console.log('Including billing address in metadata:', processedShippingAddress.billingAddress);
+      }
+      
+      // Stringify the shipping address for metadata
+      const shippingAddressStr = JSON.stringify(processedShippingAddress);
+      console.log('Shipping address for metadata:', shippingAddressStr);
       
       // Create a checkout session
       const { data, error: sessionError } = await invokeFunction('create-checkout-session', {
