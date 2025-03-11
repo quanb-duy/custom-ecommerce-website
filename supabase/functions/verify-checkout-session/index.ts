@@ -248,26 +248,56 @@ serve(async (req) => {
                   const { data: products } = await supabase
                     .from('products')
                     .select('id, name')
-                    .ilike('name', `%${product_name}%`)
+                    .eq('name', product_name)
                     .limit(1);
-                  
+                    
                   if (products && products.length > 0) {
                     product_id = products[0].id;
-                    console.log(`Found matching product: ${product_id} for ${product_name}`);
-                  } else {
-                    console.warn(`Could not find matching product for: ${product_name}`);
-                    // Use a default placeholder product ID for testing
-                    product_id = 1; // Make sure your database has at least one product with this ID
                   }
                 }
-                
-                validOrderItems.push({
-                  order_id,
-                  product_id,
-                  product_name,
-                  product_price: (item.price?.unit_amount || 0) / 100,
-                  quantity: item.quantity || 1
-                });
+
+                if (product_id) {
+                  // Get current stock level
+                  const { data: currentProduct, error: stockCheckError } = await supabase
+                    .from('products')
+                    .select('stock')
+                    .eq('id', product_id)
+                    .single();
+
+                  if (stockCheckError) {
+                    console.error(`Error checking stock for product ${product_id}:`, stockCheckError);
+                    continue;
+                  }
+
+                  if (!currentProduct) {
+                    console.error(`Product ${product_id} not found`);
+                    continue;
+                  }
+
+                  const quantity = item.quantity || 1;
+                  const newStock = Math.max(0, (currentProduct.stock || 0) - quantity);
+
+                  // Update stock level
+                  const { error: stockUpdateError } = await supabase
+                    .from('products')
+                    .update({ stock: newStock })
+                    .eq('id', product_id);
+
+                  if (stockUpdateError) {
+                    console.error(`Error updating stock for product ${product_id}:`, stockUpdateError);
+                    continue;
+                  }
+
+                  console.log(`Updated stock for product ${product_id} from ${currentProduct.stock} to ${newStock}`);
+
+                  validOrderItems.push({
+                    order_id,
+                    product_id,
+                    quantity: item.quantity || 1,
+                    price: item.amount_total / 100,
+                    name: product_name
+                  });
+                }
               } catch (e) {
                 console.error('Error processing order item:', e);
               }
@@ -375,26 +405,56 @@ serve(async (req) => {
                 const { data: products } = await supabase
                   .from('products')
                   .select('id, name')
-                  .ilike('name', `%${product_name}%`)
+                  .eq('name', product_name)
                   .limit(1);
-                
+                  
                 if (products && products.length > 0) {
                   product_id = products[0].id;
-                  console.log(`Found matching product: ${product_id} for ${product_name}`);
-                } else {
-                  console.warn(`Could not find matching product for: ${product_name}`);
-                  // Use a default placeholder product ID for testing
-                  product_id = 1; // Make sure your database has at least one product with this ID
                 }
               }
-              
-              validOrderItems.push({
-                order_id,
-                product_id,
-                product_name,
-                product_price: (item.price?.unit_amount || 0) / 100,
-                quantity: item.quantity || 1
-              });
+
+              if (product_id) {
+                // Get current stock level
+                const { data: currentProduct, error: stockCheckError } = await supabase
+                  .from('products')
+                  .select('stock')
+                  .eq('id', product_id)
+                  .single();
+
+                if (stockCheckError) {
+                  console.error(`Error checking stock for product ${product_id}:`, stockCheckError);
+                  continue;
+                }
+
+                if (!currentProduct) {
+                  console.error(`Product ${product_id} not found`);
+                  continue;
+                }
+
+                const quantity = item.quantity || 1;
+                const newStock = Math.max(0, (currentProduct.stock || 0) - quantity);
+
+                // Update stock level
+                const { error: stockUpdateError } = await supabase
+                  .from('products')
+                  .update({ stock: newStock })
+                  .eq('id', product_id);
+
+                if (stockUpdateError) {
+                  console.error(`Error updating stock for product ${product_id}:`, stockUpdateError);
+                  continue;
+                }
+
+                console.log(`Updated stock for product ${product_id} from ${currentProduct.stock} to ${newStock}`);
+
+                validOrderItems.push({
+                  order_id,
+                  product_id,
+                  quantity: item.quantity || 1,
+                  price: item.amount_total / 100,
+                  name: product_name
+                });
+              }
             } catch (e) {
               console.error('Error processing order item:', e);
             }
