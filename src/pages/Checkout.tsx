@@ -69,7 +69,7 @@ const Checkout = () => {
   const sessionId = searchParams.get('session_id');
   
   const [isLoading, setIsLoading] = useState(false);
-  const [shippingMethod, setShippingMethod] = useState('standard');
+  const [shippingMethod, setShippingMethod] = useState('packeta');
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [paymentStep, setPaymentStep] = useState(false);
   const [packetaPoint, setPacketaPoint] = useState<PacketaPoint | null>(null);
@@ -429,26 +429,9 @@ const Checkout = () => {
                     <RadioGroup 
                       value={shippingMethod} 
                       onValueChange={setShippingMethod}
+                      defaultValue="packeta"
                       className="space-y-4"
                     >
-                      <div className="flex items-center space-x-3 rounded-md border p-3">
-                        <RadioGroupItem value="standard" id="standard" />
-                        <Label htmlFor="standard" className="flex-1 cursor-pointer">
-                          <div className="font-medium">Standard Shipping</div>
-                          <div className="text-sm text-gray-500">Delivery in 3-5 business days</div>
-                        </Label>
-                        <div className="font-medium">$5.00</div>
-                      </div>
-                      
-                      <div className="flex items-center space-x-3 rounded-md border p-3">
-                        <RadioGroupItem value="express" id="express" />
-                        <Label htmlFor="express" className="flex-1 cursor-pointer">
-                          <div className="font-medium">Express Shipping</div>
-                          <div className="text-sm text-gray-500">Delivery in 1-2 business days</div>
-                        </Label>
-                        <div className="font-medium">$15.00</div>
-                      </div>
-
                       <div className="flex items-center space-x-3 rounded-md border p-3">
                         <RadioGroupItem value="packeta" id="packeta" />
                         <Label htmlFor="packeta" className="flex-1 cursor-pointer">

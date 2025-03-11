@@ -31,17 +31,8 @@ export const StripePaymentForm = ({
   onPaymentError, 
   disabled,
   cartItems = [],
-  shippingMethod = 'standard',
-  shippingAddress = { 
-    fullName: '', 
-    phone: '',
-    type: 'standard',
-    addressLine1: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    country: ''
-  }
+  shippingMethod = 'packeta',
+  shippingAddress
 }: StripePaymentFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +115,9 @@ export const StripePaymentForm = ({
       }
       
       console.log('Redirecting to Stripe checkout:', data.url);
+      
+      // Ensure cart is cleared when redirecting to Stripe
+      await clearCart();
       
       // Redirect to Stripe Checkout
       window.location.href = data.url;
