@@ -56,7 +56,7 @@ export interface ShippingAddress {
     country: string;
     phone?: string;
   };
-  // For additional properties
+  // Index signature for additional properties
   [key: string]: string | number | boolean | object | undefined;
 }
 

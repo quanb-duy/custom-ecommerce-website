@@ -33,7 +33,16 @@ export const StripePaymentForm = ({
   disabled,
   cartItems = [],
   shippingMethod = 'standard',
-  shippingAddress = { fullName: '', phone: '' }
+  shippingAddress = { 
+    fullName: '', 
+    phone: '',
+    type: 'standard',
+    addressLine1: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: ''
+  }
 }: StripePaymentFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

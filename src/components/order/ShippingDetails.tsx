@@ -24,7 +24,7 @@ export const ShippingDetails = ({ shippingAddress }: ShippingDetailsProps) => {
             )}
           </div>
           <p className="text-sm mt-2">
-            <span className="font-medium">Recipient:</span> {shippingAddress.fullName}
+            <span className="font-medium">Recipient:</span> {shippingAddress.fullName || 'N/A'}
           </p>
           {shippingAddress.phone && (
             <p className="text-sm">
@@ -34,15 +34,15 @@ export const ShippingDetails = ({ shippingAddress }: ShippingDetailsProps) => {
         </>
       ) : (
         <div className="text-sm">
-          <p>{shippingAddress.fullName}</p>
-          <p>{shippingAddress.addressLine1}</p>
+          <p>{shippingAddress.fullName || 'N/A'}</p>
+          <p>{shippingAddress.addressLine1 || 'N/A'}</p>
           {shippingAddress.addressLine2 && (
             <p>{shippingAddress.addressLine2}</p>
           )}
           <p>
-            {shippingAddress.city}, {shippingAddress.state} {shippingAddress.zipCode}
+            {shippingAddress.city || 'N/A'}, {shippingAddress.state || 'N/A'} {shippingAddress.zipCode || 'N/A'}
           </p>
-          <p>{shippingAddress.country}</p>
+          <p>{shippingAddress.country || 'N/A'}</p>
           {shippingAddress.phone && (
             <p className="mt-1">
               <span className="font-medium">Phone:</span> {shippingAddress.phone}
