@@ -13,6 +13,17 @@ import { ChevronRight, Package, MapPin, User, LogOut, Plus, Clock, X } from 'luc
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Address, Order, OrderItem } from '@/types/supabase-custom';
+import { PostgrestError } from '@supabase/supabase-js';
+
+interface ValidationErrors {
+  [key: string]: string;
+}
+
+interface PacketaPoint {
+  id: string;
+  name: string;
+  address: string;
+}
 
 const Account = () => {
   const { user, signOut } = useAuth();
@@ -22,6 +33,10 @@ const Account = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
+  const [userProfile, setUserProfile] = useState({
+    full_name: '',
+    phone: ''
+  });
   
   const [newAddress, setNewAddress] = useState({
     address_line1: '',
@@ -41,6 +56,7 @@ const Account = () => {
     
     fetchAddresses();
     fetchOrders();
+    fetchUserProfile();
   }, [user, navigate]);
 
   const fetchAddresses = async () => {
@@ -108,6 +124,92 @@ const Account = () => {
       toast({
         title: "Failed to load orders",
         description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      // Fetch profile data
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+      
+      if (profileError) throw profileError;
+
+      // Get the default address for phone number
+      const { data: addressData, error: addressError } = await supabase
+        .from('user_addresses')
+        .select('phone')
+        .eq('user_id', user.id)
+        .eq('is_default', true)
+        .single();
+      
+      if (addressError && addressError.code !== 'PGRST116') throw addressError;
+      
+      setUserProfile({
+        full_name: profileData?.full_name || '',
+        phone: addressData?.phone || ''
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error fetching user profile:', errorMessage);
+      toast({
+        title: "Failed to load profile",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updateProfile = async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      
+      // Update profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ full_name: userProfile.full_name })
+        .eq('id', user.id);
+      
+      if (profileError) throw profileError;
+
+      // Update phone number in default address if exists
+      const { data: defaultAddress } = await supabase
+        .from('user_addresses')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_default', true)
+        .single();
+
+      if (defaultAddress) {
+        const { error: addressError } = await supabase
+          .from('user_addresses')
+          .update({ phone: userProfile.phone })
+          .eq('id', defaultAddress.id);
+        
+        if (addressError) throw addressError;
+      }
+      
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully.",
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error updating profile:', errorMessage);
+      toast({
+        title: "Failed to update profile",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -619,13 +721,47 @@ const Account = () => {
                     <Label htmlFor="email">Email Address</Label>
                     <Input
                       id="email"
-                      value={user.email}
+                      value={user?.email}
                       disabled
                       className="bg-gray-50"
                     />
                   </div>
                   
-                  <div className="pt-4">
+                  <div>
+                    <Label htmlFor="full_name">Full Name</Label>
+                    <Input
+                      id="full_name"
+                      value={userProfile.full_name}
+                      onChange={(e) => setUserProfile(prev => ({ ...prev, full_name: e.target.value }))}
+                      placeholder="Enter your full name"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      value={userProfile.phone}
+                      onChange={(e) => setUserProfile(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="Enter your phone number"
+                    />
+                  </div>
+                  
+                  <div className="flex justify-between items-center pt-4">
+                    <Button 
+                      onClick={updateProfile}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <div className="flex items-center">
+                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                          Saving...
+                        </div>
+                      ) : (
+                        'Save Changes'
+                      )}
+                    </Button>
+                    
                     <Button 
                       variant="outline" 
                       onClick={() => 

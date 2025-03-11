@@ -102,15 +102,23 @@ const Checkout = () => {
     const loadUserAddresses = async () => {
       if (user) {
         try {
+          // Fetch user profile data first
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
+          
+          if (profileError) throw profileError;
+
+          // Then fetch addresses
           const { data, error } = await supabase
             .from('user_addresses')
             .select('*')
             .eq('user_id', user.id)
             .order('is_default', { ascending: false });
             
-          if (error) {
-            throw error;
-          }
+          if (error) throw error;
           
           if (data && data.length > 0) {
             setUserAddresses(data);
@@ -119,8 +127,9 @@ const Checkout = () => {
             if (defaultAddress) {
               setSelectedAddress(defaultAddress.id);
               
+              // Pre-fill shipping address with user's information
               setShippingAddress({
-                fullName: user.user_metadata?.full_name || '',
+                fullName: profileData?.full_name || '',
                 addressLine1: defaultAddress.address_line1,
                 addressLine2: defaultAddress.address_line2 || '',
                 city: defaultAddress.city,
@@ -131,8 +140,14 @@ const Checkout = () => {
               });
             }
           }
-        } catch (error) {
-          console.error('Error loading user addresses:', error);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+          console.error('Error loading user addresses:', errorMessage);
+          toast({
+            title: "Error loading addresses",
+            description: errorMessage,
+            variant: "destructive",
+          });
         }
       }
     };
@@ -188,19 +203,18 @@ const Checkout = () => {
   }, []);
 
   const handleAddressSelect = (addressId: string) => {
-    setSelectedAddress(addressId);
-    
-    const address = userAddresses.find(addr => addr.id === addressId);
-    if (address) {
+    const selectedAddr = userAddresses.find(addr => addr.id === addressId);
+    if (selectedAddr) {
+      setSelectedAddress(addressId);
       setShippingAddress({
-        fullName: user?.user_metadata?.full_name || '',
-        addressLine1: address.address_line1,
-        addressLine2: address.address_line2 || '',
-        city: address.city,
-        state: address.state,
-        zipCode: address.postal_code,
-        country: address.country,
-        phone: address.phone || '',
+        fullName: shippingAddress.fullName, // Keep existing name
+        addressLine1: selectedAddr.address_line1,
+        addressLine2: selectedAddr.address_line2 || '',
+        city: selectedAddr.city,
+        state: selectedAddr.state,
+        zipCode: selectedAddr.postal_code,
+        country: selectedAddr.country,
+        phone: selectedAddr.phone || shippingAddress.phone || '', // Keep existing phone if new one not available
       });
     }
   };
