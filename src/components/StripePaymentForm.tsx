@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { CartItem } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface StripePaymentFormProps {
   amount: number;
@@ -32,11 +33,17 @@ export const StripePaymentForm = ({
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { post: invokeFunction } = useSupabaseFunctions();
+  const { user } = useAuth(); // Get the current user
   
   const handleStripeCheckout = async () => {
     try {
       setIsLoading(true);
       setError(null);
+      
+      // Check if user is logged in
+      if (!user) {
+        throw new Error('You must be logged in to checkout');
+      }
       
       console.log('Starting Stripe checkout process for amount:', amount);
       
@@ -66,7 +73,8 @@ export const StripePaymentForm = ({
           success_url: `${window.location.origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/checkout?canceled=true`,
           metadata: {
-            order_id: new Date().getTime().toString() // We'll replace this with a real order ID later
+            order_id: new Date().getTime().toString(), // Timestamp as temporary order_id
+            user_id: user.id // Add the user_id to metadata
           }
         }
       });

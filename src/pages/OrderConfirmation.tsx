@@ -282,7 +282,10 @@ const OrderConfirmation = () => {
       
       // Verify the session with Stripe
       const { data, error: verifyError } = await invokeFunction('verify-checkout-session', {
-        body: { sessionId }
+        body: { 
+          sessionId,
+          user_id: user.id
+        }
       });
       
       if (verifyError) {
