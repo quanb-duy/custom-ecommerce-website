@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+// @ts-expect-error - Deno will load this module at runtime
+import { Builder, Parser } from "https://esm.sh/xml2js@0.6.2"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,76 +11,6 @@ const corsHeaders = {
 
 // Define the Packeta API URL according to their documentation
 const PACKETA_API_URL = "https://www.zasilkovna.cz/api/rest";
-
-// Simple XML builder function
-function buildXML(obj: Record<string, unknown>): string {
-  const xml = ['<?xml version="1.0" encoding="utf-8"?>'];
-  
-  function addToXml(object: any, name: string, indent = ''): void {
-    if (object === null || object === undefined) return;
-    
-    if (typeof object === 'object' && !Array.isArray(object)) {
-      xml.push(`${indent}<${name}>`);
-      const newIndent = indent + '  ';
-      for (const key in object) {
-        if (Object.prototype.hasOwnProperty.call(object, key)) {
-          addToXml(object[key], key, newIndent);
-        }
-      }
-      xml.push(`${indent}</${name}>`);
-    } else if (Array.isArray(object)) {
-      for (const item of object) {
-        addToXml(item, name, indent);
-      }
-    } else {
-      xml.push(`${indent}<${name}>${object}</${name}>`);
-    }
-  }
-  
-  const rootKey = Object.keys(obj)[0];
-  addToXml(obj[rootKey], rootKey);
-  
-  return xml.join('\n');
-}
-
-// Simple XML parser
-function parseXMLResponse(xml: string): any {
-  const result: any = {};
-  
-  try {
-    // Extract status
-    const statusMatch = xml.match(/<status>(.*?)<\/status>/);
-    if (statusMatch) {
-      result.status = statusMatch[1];
-    }
-    
-    // Extract result elements
-    result.result = {};
-    
-    // Extract ID
-    const idMatch = xml.match(/<id>(.*?)<\/id>/);
-    if (idMatch) {
-      result.result.id = idMatch[1];
-    }
-    
-    // Extract barcode
-    const barcodeMatch = xml.match(/<barcode>(.*?)<\/barcode>/);
-    if (barcodeMatch) {
-      result.result.barcode = barcodeMatch[1];
-    }
-    
-    // Extract error message if present
-    const errorMatch = xml.match(/<message>(.*?)<\/message>/);
-    if (errorMatch) {
-      result.message = errorMatch[1];
-    }
-    
-    return result;
-  } catch (e) {
-    console.error("Error parsing XML:", e);
-    return { status: "error", message: "Failed to parse XML response" };
-  }
-}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -186,6 +118,20 @@ serve(async (req) => {
       )
     }
 
+    if (!email) {
+      console.error('Missing required email for Packeta shipping');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required email',
+          details: 'Email is required for Packeta shipping'
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+
     // 1. Verify the order exists in our database
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -231,8 +177,8 @@ serve(async (req) => {
     
     console.log('Parsed shipping address:', parsedShippingAddress);
     
-    // 3. Extract pickup point ID
-    let pickupPointId = null;
+    // 3. Extract pickup point ID and ensure it's valid
+    let pickupPointId: string | number | null = null;
     
     if (parsedShippingAddress.type === 'packeta' && parsedShippingAddress.pickupPoint?.id) {
       pickupPointId = parsedShippingAddress.pickupPoint.id;
@@ -254,7 +200,23 @@ serve(async (req) => {
       )
     }
     
-    console.log(`Using pickup point ID: ${pickupPointId}`);
+    // Ensure numeric ID format
+    const numericPointId = parseInt(String(pickupPointId), 10);
+    if (isNaN(numericPointId)) {
+      console.error('Pickup point ID is not a valid number:', pickupPointId);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid pickup point ID format',
+          details: 'The pickup point ID must be a valid number'
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+    
+    console.log(`Using pickup point ID: ${numericPointId}`);
     
     // 4. Calculate total value from items or use order total
     const totalValue = items.length > 0
@@ -271,6 +233,39 @@ serve(async (req) => {
       lastName = nameParts.slice(1).join(' ') || '';
     }
     
+    // Validate required customer information
+    if (!firstName || !lastName) {
+      console.error('Missing required customer name information:', {
+        firstName,
+        lastName,
+        fullName: parsedShippingAddress.fullName
+      });
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required customer information',
+          details: 'Full name with first and last name is required for Packeta shipping'
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+    
+    if (!parsedShippingAddress.phone) {
+      console.error('Missing required phone number');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required customer information',
+          details: 'Phone number is required for Packeta shipping'
+        }), 
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        }
+      )
+    }
+    
     // 6. Create Packeta API request following the documentation format
     const requestBody = {
       createPacket: {
@@ -281,7 +276,7 @@ serve(async (req) => {
           surname: lastName,
           email: email,
           phone: parsedShippingAddress.phone || '',
-          addressId: pickupPointId,
+          addressId: numericPointId,
           cod: payment_method === 'cod' ? totalValue : 0,
           value: totalValue,
           currency: "USD",
@@ -291,15 +286,21 @@ serve(async (req) => {
       }
     };
     
-    console.log('Creating XML payload from:', requestBody);
+    console.log('Creating XML payload from:', JSON.stringify(requestBody, null, 2));
     
-    // 7. Convert to XML
-    const xmlPayload = buildXML(requestBody);
-    console.log('XML payload:', xmlPayload);
+    // 7. Convert to XML using xml2js
+    const xmlBuilder = new Builder({
+      rootName: 'createPacket',
+      headless: true
+    });
     
-    // 8. Send to Packeta API
     try {
+      // 8. Send to Packeta API
       console.log(`Sending request to ${PACKETA_API_URL}`);
+      
+      // Build XML without root wrapper since it's included in the object
+      const xmlPayload = `<?xml version="1.0" encoding="utf-8"?>\n${xmlBuilder.buildObject(requestBody.createPacket)}`;
+      console.log('XML payload:', xmlPayload);
       
       const response = await fetch(PACKETA_API_URL, {
         method: 'POST',
@@ -309,15 +310,38 @@ serve(async (req) => {
         body: xmlPayload
       });
       
+      // Check HTTP status
+      if (!response.ok) {
+        console.error(`Packeta API returned non-OK status: ${response.status} ${response.statusText}`);
+      }
+      
       const responseText = await response.text();
-      console.log('Packeta API response:', responseText);
+      console.log('Packeta API raw response:', responseText);
       
-      // 9. Parse the XML response
-      const parsedResponse = parseXMLResponse(responseText);
-      console.log('Parsed response:', parsedResponse);
+      // 9. Parse the XML response using xml2js
+      const xmlParser = new Parser({ explicitArray: false });
+      let parsedResponse;
       
-      if (parsedResponse.status !== 'ok') {
-        throw new Error(`Packeta API error: ${parsedResponse.message || 'Unknown error'}`);
+      try {
+        parsedResponse = await xmlParser.parseStringPromise(responseText);
+        console.log('Packeta API parsed response:', JSON.stringify(parsedResponse, null, 2));
+      } catch (parseError) {
+        console.error('Error parsing Packeta API response XML:', parseError);
+        console.error('Raw response that could not be parsed:', responseText);
+        throw new Error(`Failed to parse Packeta API response: ${parseError.message}`);
+      }
+      
+      if (!parsedResponse.response || parsedResponse.response.status !== 'ok') {
+        const errorMessage = parsedResponse.response?.fault?.message || 
+                            parsedResponse.response?.message || 
+                            'Unknown Packeta API error';
+        throw new Error(`Packeta API error: ${errorMessage}`);
+      }
+      
+      // Make sure we have a valid result with ID and barcode
+      if (!parsedResponse.response.result || 
+          !parsedResponse.response.result.id) {
+        throw new Error('Packeta API returned success but missing required result data');
       }
       
       // 10. Update order with tracking information
@@ -325,8 +349,8 @@ serve(async (req) => {
         .from('orders')
         .update({
           status: 'processing',
-          tracking_number: parsedResponse.result.barcode || parsedResponse.result.id,
-          carrier_data: parsedResponse,
+          tracking_number: parsedResponse.response.result.barcode || parsedResponse.response.result.id,
+          carrier_data: parsedResponse.response,
           notes: 'Order submitted to Packeta successfully'
         })
         .eq('id', order_id);
@@ -337,7 +361,7 @@ serve(async (req) => {
           JSON.stringify({ 
             error: 'Database update error',
             details: updateError.message,
-            tracking_number: parsedResponse.result.barcode || parsedResponse.result.id
+            tracking_number: parsedResponse.response.result.barcode || parsedResponse.response.result.id
           }), 
           { 
             status: 500, 
@@ -350,9 +374,9 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true,
           order_id: order_id,
-          packeta_id: parsedResponse.result.id,
-          barcode: parsedResponse.result.barcode,
-          tracking_number: parsedResponse.result.barcode || parsedResponse.result.id,
+          packeta_id: parsedResponse.response.result.id,
+          barcode: parsedResponse.response.result.barcode,
+          tracking_number: parsedResponse.response.result.barcode || parsedResponse.response.result.id,
           status: 'processing',
           message: 'Order successfully created in Packeta system'
         }), 
@@ -363,6 +387,7 @@ serve(async (req) => {
       )
     } catch (error) {
       console.error('Error calling Packeta API:', error);
+      console.error('Error details:', error.message || 'No error details available');
       
       // Still update the order with an error note
       await supabase
@@ -385,6 +410,7 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error('Unexpected error:', error);
+    console.error('Stack trace:', error.stack || 'No stack trace available');
     return new Response(
       JSON.stringify({ 
         error: 'An unexpected error occurred',
