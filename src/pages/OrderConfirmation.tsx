@@ -12,9 +12,9 @@ import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { useAuth } from '@/contexts/AuthContext';
 import { ShoppingBag, Check, Truck, AlertCircle } from 'lucide-react';
 import { Order, OrderItem } from '@/types/supabase-custom';
-import OrderSummary from '@/components/order/OrderSummary';
-import ShippingDetails from '@/components/order/ShippingDetails';
-import OrderItems from '@/components/order/OrderItems';
+import { OrderSummary } from '@/components/order/OrderSummary';
+import { ShippingDetails } from '@/components/order/ShippingDetails';
+import { OrderItems } from '@/components/order/OrderItems';
 
 const OrderConfirmation = () => {
   const [searchParams] = useSearchParams();
@@ -28,6 +28,7 @@ const OrderConfirmation = () => {
   const [error, setError] = useState<string | null>(null);
   const [orderDetails, setOrderDetails] = useState<Order | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [isTrackingLoading, setIsTrackingLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -40,7 +41,7 @@ const OrderConfirmation = () => {
         // If we have a direct order ID, fetch that order
         if (orderId) {
           console.log('Fetching order by ID:', orderId);
-          await getOrderById(orderId);
+          await getOrderById(Number(orderId));
           return;
         }
         
@@ -72,7 +73,7 @@ const OrderConfirmation = () => {
     fetchOrderDetails();
   }, [sessionId, orderId, user, toast, invokeFunction]);
 
-  const getOrderById = async (id: string) => {
+  const getOrderById = async (id: number) => {
     try {
       // Get the order
       const { data: order, error: orderError } = await supabase
@@ -128,7 +129,7 @@ const OrderConfirmation = () => {
       
       // Check if the session already created an order
       if (data.session?.metadata?.order_id) {
-        const orderId = data.session.metadata.order_id;
+        const orderId = Number(data.session.metadata.order_id);
         
         // First check if the order already exists in our database
         const { data: existingOrder, error: existingError } = await supabase
@@ -205,13 +206,50 @@ const OrderConfirmation = () => {
       
       // Fetch the complete order details
       if (orderResponse.order_id) {
-        await getOrderById(orderResponse.order_id);
+        await getOrderById(Number(orderResponse.order_id));
       } else {
         throw new Error('No order ID returned from order creation');
       }
       
     } catch (err) {
       throw err;
+    }
+  };
+
+  const requestTracking = async () => {
+    if (!orderDetails) return;
+    
+    setIsTrackingLoading(true);
+    try {
+      const { data, error } = await invokeFunction('track-order', {
+        body: { order_id: orderDetails.id }
+      });
+      
+      if (error) {
+        throw new Error(`Error requesting tracking: ${error}`);
+      }
+      
+      if (data.tracking_number) {
+        setOrderDetails(prev => prev ? { ...prev, tracking_number: data.tracking_number } : null);
+        toast({
+          title: 'Tracking Information',
+          description: `Tracking number: ${data.tracking_number}`,
+        });
+      } else {
+        toast({
+          title: 'Tracking Not Available',
+          description: 'Tracking information is not available yet. Please check back later.',
+        });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTrackingLoading(false);
     }
   };
 
@@ -402,8 +440,12 @@ const OrderConfirmation = () => {
             </div>
             
             <div>
-              <OrderSummary order={orderDetails} items={orderItems} />
-              <ShippingDetails order={orderDetails} />
+              <OrderSummary 
+                orderDetails={orderDetails} 
+                isTrackingLoading={isTrackingLoading}
+                onRequestTracking={requestTracking}
+              />
+              <ShippingDetails shippingAddress={orderDetails.shipping_address} />
               
               <div className="text-center mt-6">
                 <Button asChild variant="outline" className="w-full">

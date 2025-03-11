@@ -35,7 +35,7 @@ export interface PickupPoint {
 
 export interface ShippingAddress {
   type?: 'packeta' | 'standard';
-  fullName: string;
+  fullName?: string;
   phone?: string;
   // Fields for standard shipping
   addressLine1?: string;

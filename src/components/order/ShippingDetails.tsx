@@ -1,9 +1,9 @@
 
 import React from 'react';
-import { OrderDetails } from '@/types/supabase-custom';
+import { ShippingAddress } from '@/types/supabase-custom';
 
 interface ShippingDetailsProps {
-  shippingAddress: OrderDetails['shipping_address'];
+  shippingAddress: ShippingAddress;
 }
 
 export const ShippingDetails = ({ shippingAddress }: ShippingDetailsProps) => {
@@ -15,9 +15,13 @@ export const ShippingDetails = ({ shippingAddress }: ShippingDetailsProps) => {
       {shippingAddress.type === 'packeta' ? (
         <>
           <div className="text-sm">
-            <p className="font-medium">{shippingAddress.pickupPoint?.name}</p>
-            <p>{shippingAddress.pickupPoint?.address}</p>
-            <p>{shippingAddress.pickupPoint?.zip} {shippingAddress.pickupPoint?.city}</p>
+            {shippingAddress.pickupPoint && (
+              <>
+                <p className="font-medium">{shippingAddress.pickupPoint.name}</p>
+                <p>{shippingAddress.pickupPoint.address}</p>
+                <p>{shippingAddress.pickupPoint.zip} {shippingAddress.pickupPoint.city}</p>
+              </>
+            )}
           </div>
           <p className="text-sm mt-2">
             <span className="font-medium">Recipient:</span> {shippingAddress.fullName}
