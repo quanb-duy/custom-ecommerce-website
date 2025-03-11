@@ -125,7 +125,7 @@ serve(async (req) => {
       let order_id = null;
       
       // Extract shipping details from metadata
-      let shipping_address = {};
+      let shipping_address: any = {};
       try {
         if (session.metadata?.shipping_address) {
           console.log('Raw shipping_address from metadata:', session.metadata.shipping_address);
@@ -154,20 +154,27 @@ serve(async (req) => {
         shipping_address = { error: 'Failed to process shipping address' };
       }
       
-      // Log shipping address details for debugging
-      if (shipping_address) {
-        if (typeof shipping_address === 'object') {
-          console.log('Final shipping_address type:', shipping_address.type || 'standard');
-          
-          if (shipping_address.type === 'packeta' && shipping_address.pickupPoint) {
-            console.log('Packeta pickup point found:', shipping_address.pickupPoint);
-          }
-          
-          if (shipping_address.billingAddress) {
-            console.log('Billing address found:', shipping_address.billingAddress);
-          }
-        } else {
-          console.error('Unexpected shipping_address type:', typeof shipping_address);
+      // Ensure shipping_address is properly formatted for order history
+      let formatted_shipping_address: any = shipping_address;
+      if (shipping_address && typeof shipping_address === 'object') {
+        // Create a formatted address object
+        formatted_shipping_address = {
+          fullAddress: '',
+          ...shipping_address
+        };
+        
+        if (shipping_address.type === 'packeta' && shipping_address.pickupPoint) {
+          // Format Packeta address for display
+          const pickupPoint = shipping_address.pickupPoint;
+          formatted_shipping_address.fullAddress = 
+            `Packeta Point: ${pickupPoint.name}, ${pickupPoint.street}, ${pickupPoint.city}, ${pickupPoint.zip}`;
+          console.log('Formatted Packeta address:', formatted_shipping_address.fullAddress);
+        } else if (shipping_address.billingAddress) {
+          // Format standard address for display
+          const address = shipping_address.billingAddress;
+          formatted_shipping_address.fullAddress = 
+            `${address.streetAddress || ''}, ${address.city || ''}, ${address.state || ''} ${address.zipCode || ''}, ${address.country || ''}`;
+          console.log('Formatted standard address:', formatted_shipping_address.fullAddress);
         }
       }
       
@@ -191,7 +198,7 @@ serve(async (req) => {
               status: 'paid',
               total: session.amount_total / 100,
               shipping_method: session.metadata?.shipping_method || 'standard',
-              shipping_address: shipping_address,
+              shipping_address: formatted_shipping_address,
               payment_intent_id: session.payment_intent,
               created_at: new Date().toISOString()
             })
@@ -205,7 +212,7 @@ serve(async (req) => {
               status: 'paid',
               total: session.amount_total / 100,
               shipping_method: session.metadata?.shipping_method || 'standard',
-              shipping_address: shipping_address,
+              shipping_address: formatted_shipping_address,
               payment_intent_id: session.payment_intent
             });
             
@@ -226,12 +233,12 @@ serve(async (req) => {
           
           // Create order items
           if (lineItems && lineItems.data.length > 0) {
-            const validOrderItems = [];
+            const validOrderItems: Array<any> = [];
             
             for (const item of lineItems.data) {
               // Try to extract product_id from metadata
-              let product_id = null;
-              let product_name = item.description || 'Product';
+              let product_id: number | null = null;
+              const product_name = item.description || 'Product';
               
               try {
                 if (item.price?.product?.metadata?.product_id) {
@@ -290,10 +297,11 @@ serve(async (req) => {
 
                   console.log(`Updated stock for product ${product_id} from ${currentProduct.stock} to ${newStock}`);
 
+                  // Create proper order item object
                   validOrderItems.push({
-                    order_id,
-                    product_id,
-                    quantity: item.quantity || 1,
+                    order_id: order_id,
+                    product_id: product_id,
+                    quantity: quantity,
                     price: item.amount_total / 100,
                     name: product_name
                   });
@@ -303,20 +311,32 @@ serve(async (req) => {
               }
             }
             
+            // Insert order items into the database if we have any valid items
             if (validOrderItems.length > 0) {
-              console.log(`Adding ${validOrderItems.length} order items`);
+              console.log(`Inserting ${validOrderItems.length} order items:`, validOrderItems);
               
-              const { error: itemsError } = await supabase
+              const { error: orderItemsError } = await supabase
                 .from('order_items')
                 .insert(validOrderItems);
+              
+              if (orderItemsError) {
+                console.error('Error saving order items:', orderItemsError);
+                console.error('Order items data attempted:', validOrderItems);
                 
-              if (itemsError) {
-                console.error('Error creating order items:', itemsError);
-              } else {
-                console.log('Order items created successfully');
+                return new Response(
+                  JSON.stringify({ 
+                    error: 'Order was created but failed to save items',
+                    orderId: order_id,
+                    details: orderItemsError.message
+                  }), 
+                  { 
+                    status: 207, // Partial success
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                  }
+                )
               }
             } else {
-              console.warn('No valid order items to create');
+              console.warn('No valid order items to save');
             }
           }
         } else {
@@ -337,7 +357,7 @@ serve(async (req) => {
           user_id,
           total: session.amount_total / 100,
           shipping_method: session.metadata?.shipping_method || 'standard',
-          shipping_address
+          shipping_address: formatted_shipping_address
         });
         
         // Create order in database
@@ -348,7 +368,7 @@ serve(async (req) => {
             status: 'paid',
             total: session.amount_total / 100,
             shipping_method: session.metadata?.shipping_method || 'standard',
-            shipping_address,
+            shipping_address: formatted_shipping_address,
             payment_intent_id: session.payment_intent,
             created_at: new Date().toISOString()
           })
@@ -362,7 +382,7 @@ serve(async (req) => {
             status: 'paid',
             total: session.amount_total / 100,
             shipping_method: session.metadata?.shipping_method || 'standard',
-            shipping_address,
+            shipping_address: formatted_shipping_address,
             payment_intent_id: session.payment_intent
           });
           
@@ -383,12 +403,12 @@ serve(async (req) => {
         
         // Create order items
         if (lineItems && lineItems.data.length > 0) {
-          const validOrderItems = [];
+          const validOrderItems: Array<any> = [];
           
           for (const item of lineItems.data) {
             // Try to extract product_id from metadata
-            let product_id = null;
-            let product_name = item.description || 'Product';
+            let product_id: number | null = null;
+            const product_name = item.description || 'Product';
             
             try {
               if (item.price?.product?.metadata?.product_id) {
@@ -447,10 +467,11 @@ serve(async (req) => {
 
                 console.log(`Updated stock for product ${product_id} from ${currentProduct.stock} to ${newStock}`);
 
+                // Create proper order item object
                 validOrderItems.push({
-                  order_id,
-                  product_id,
-                  quantity: item.quantity || 1,
+                  order_id: order_id,
+                  product_id: product_id,
+                  quantity: quantity,
                   price: item.amount_total / 100,
                   name: product_name
                 });
@@ -460,20 +481,32 @@ serve(async (req) => {
             }
           }
           
+          // Insert order items into the database if we have any valid items
           if (validOrderItems.length > 0) {
-            console.log(`Adding ${validOrderItems.length} order items`);
+            console.log(`Inserting ${validOrderItems.length} order items:`, validOrderItems);
             
-            const { error: itemsError } = await supabase
+            const { error: orderItemsError } = await supabase
               .from('order_items')
               .insert(validOrderItems);
+            
+            if (orderItemsError) {
+              console.error('Error saving order items:', orderItemsError);
+              console.error('Order items data attempted:', validOrderItems);
               
-            if (itemsError) {
-              console.error('Error creating order items:', itemsError);
-            } else {
-              console.log('Order items created successfully');
+              return new Response(
+                JSON.stringify({ 
+                  error: 'Order was created but failed to save items',
+                  orderId: order_id,
+                  details: orderItemsError.message
+                }), 
+                { 
+                  status: 207, // Partial success
+                  headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                }
+              )
             }
           } else {
-            console.warn('No valid order items to create');
+            console.warn('No valid order items to save');
           }
         }
       }
