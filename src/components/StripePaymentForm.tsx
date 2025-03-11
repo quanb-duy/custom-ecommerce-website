@@ -1,10 +1,9 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
-import { CartItem } from '@/contexts/CartContext';
+import { CartItem, useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { ShippingAddress } from '@/types/supabase-custom';
 
@@ -49,6 +48,7 @@ export const StripePaymentForm = ({
   const { toast } = useToast();
   const { post: invokeFunction } = useSupabaseFunctions();
   const { user } = useAuth();
+  const { clearCart } = useCart();
   
   const handleStripeCheckout = async () => {
     try {

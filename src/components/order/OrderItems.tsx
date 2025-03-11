@@ -7,7 +7,13 @@ interface OrderItemsProps {
 }
 
 export const OrderItems = ({ items }: OrderItemsProps) => {
-  if (!items || items.length === 0) return null;
+  if (!items || items.length === 0) {
+    return (
+      <div className="py-3 text-sm text-gray-500">
+        No items found in this order.
+      </div>
+    );
+  }
 
   return (
     <div className="pt-4 mt-4 border-t border-gray-200">

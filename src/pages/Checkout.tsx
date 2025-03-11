@@ -102,7 +102,6 @@ const Checkout = () => {
     const loadUserAddresses = async () => {
       if (user) {
         try {
-          // Fetch user profile data first
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('full_name')
@@ -111,7 +110,6 @@ const Checkout = () => {
           
           if (profileError) throw profileError;
 
-          // Then fetch addresses
           const { data, error } = await supabase
             .from('user_addresses')
             .select('*')
@@ -127,7 +125,6 @@ const Checkout = () => {
             if (defaultAddress) {
               setSelectedAddress(defaultAddress.id);
               
-              // Pre-fill shipping address with user's information
               setShippingAddress({
                 fullName: profileData?.full_name || '',
                 addressLine1: defaultAddress.address_line1,
@@ -207,14 +204,14 @@ const Checkout = () => {
     if (selectedAddr) {
       setSelectedAddress(addressId);
       setShippingAddress({
-        fullName: shippingAddress.fullName, // Keep existing name
+        fullName: shippingAddress.fullName,
         addressLine1: selectedAddr.address_line1,
         addressLine2: selectedAddr.address_line2 || '',
         city: selectedAddr.city,
         state: selectedAddr.state,
         zipCode: selectedAddr.postal_code,
         country: selectedAddr.country,
-        phone: selectedAddr.phone || shippingAddress.phone || '', // Keep existing phone if new one not available
+        phone: selectedAddr.phone || shippingAddress.phone || '',
       });
     }
   };
@@ -251,7 +248,6 @@ const Checkout = () => {
   const validateShippingInfo = () => {
     const errors: ValidationErrors = {};
     
-    // For all shipping methods, validate the billing/shipping address
     if (!shippingAddress.fullName.trim()) {
       errors.fullName = "Full name is required";
     }
@@ -282,7 +278,6 @@ const Checkout = () => {
       errors.phone = "Invalid phone number format";
     }
     
-    // For Packeta shipping, also check if a pickup point is selected
     if (shippingMethod === 'packeta' && !packetaPoint) {
       setShowPacketaRequiredError(true);
       return false;
@@ -323,7 +318,6 @@ const Checkout = () => {
     try {
       console.log('Creating order with payment ID:', paymentId);
       
-      // For Packeta shipping, include both pickup point and billing address
       const shippingAddressData = shippingMethod === 'packeta' 
         ? {
             type: 'packeta',
@@ -523,7 +517,6 @@ const Checkout = () => {
                   </Card>
                 )}
                 
-                {/* Billing Address Form - Show for all shipping methods */}
                 <Card className="mb-8">
                   <CardContent className="pt-6">
                     <h2 className="text-xl font-medium mb-4">

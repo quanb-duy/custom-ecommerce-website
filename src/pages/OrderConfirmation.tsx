@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -13,12 +14,14 @@ import { Order } from '@/types/supabase-custom';
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, CheckCircle, Truck, Box, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useCart } from '@/contexts/CartContext';
 
 const OrderConfirmation = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { post: invokeFunction } = useSupabaseFunctions();
+  const { clearCart } = useCart();
   
   const [isLoading, setIsLoading] = useState(true);
   const [order, setOrder] = useState<Order | null>(null);
@@ -41,6 +44,9 @@ const OrderConfirmation = () => {
       setIsLoading(false);
       setError('No order information provided');
     }
+    
+    // Make sure to clear the cart when order confirmation is viewed
+    clearCart();
   }, [sessionId, orderId]);
   
   const verifyStripeSession = async (session_id: string) => {
