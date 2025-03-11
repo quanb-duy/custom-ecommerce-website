@@ -85,16 +85,21 @@ const OrderConfirmation = () => {
   const [isPacketaProcessing, setIsPacketaProcessing] = useState(false);
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
   const [sessionProcessed, setSessionProcessed] = useState(false);
+  const [orderLoaded, setOrderLoaded] = useState(false);
+  const [sessionVerificationAttempted, setSessionVerificationAttempted] = useState(false);
   
   useEffect(() => {
-    console.log('OrderConfirmation mounted with params:', { orderId, sessionId, user: !!user });
+    console.log('OrderConfirmation mounted with params:', { orderId, sessionId, user: !!user, orderLoaded, sessionProcessed, sessionVerificationAttempted });
     
-    // If we have a session ID, mark it as processed immediately to prevent infinite loops
-    if (sessionId) {
+    if (orderLoaded && orderDetails) {
+      console.log('Order already loaded, skipping fetch:', orderDetails.id);
+      return;
+    }
+    
+    if (sessionId && !sessionProcessed) {
       setSessionProcessed(true);
     }
     
-    // Check if we're processing a Stripe session but user is not authenticated
     if (sessionId && !user) {
       setIsLoading(false);
       setError("Authentication required. Please sign in to view your order.");
@@ -107,11 +112,12 @@ const OrderConfirmation = () => {
     }
     
     const fetchOrderDetails = async () => {
-      setIsLoading(true);
-      setError(null); // Reset error state at the beginning
+      if (!orderLoaded) {
+        setIsLoading(true);
+      }
+      setError(null);
       
       try {
-        // Try fetching the order from the orderId in URL parameters
         if (orderId) {
           console.log(`Fetching order details for order ID: ${orderId}`);
           const { data: orderData, error: orderError } = await supabase
@@ -144,7 +150,6 @@ const OrderConfirmation = () => {
           if (orderData) {
             console.log('Order data retrieved:', orderData);
             
-            // Parse shipping_address if it's a string
             let shippingAddress = orderData.shipping_address;
             if (typeof shippingAddress === 'string') {
               try {
@@ -167,7 +172,6 @@ const OrderConfirmation = () => {
               items: orderData.order_items
             });
             
-            // If this is a Packeta order without a tracking number, process it
             if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
               await processPacketaOrder({
                 id: orderData.id,
@@ -178,28 +182,20 @@ const OrderConfirmation = () => {
               });
             }
             
-            // Clear the cart after successful order fetch
             clearCart();
+            setOrderLoaded(true);
           }
         }
-        // Handle Stripe session
-        else if (sessionId && user && !sessionProcessed) {
+        else if (sessionId && user && !sessionVerificationAttempted) {
           console.log(`Processing Stripe session: ${sessionId}`);
+          setSessionVerificationAttempted(true);
           await handleStripeSession(sessionId);
-        } 
-        // No order info
-        else if (!orderId && !sessionId) {
-          console.error('No order information provided');
-          throw new Error('No order information provided');
-        } 
-        // Session processed but no order details yet - check for recent orders
-        else if (sessionId && sessionProcessed && !orderId && user) {
+        }
+        else if (sessionId && sessionProcessed && !orderId && user && !orderLoaded) {
           console.log('Session was processed, but no order ID yet. Checking for recent orders...');
           
-          // Add a small delay to allow the order to be created in the database
           await new Promise(resolve => setTimeout(resolve, 1500));
           
-          // Check for recently created orders for this user
           const { data: recentOrders, error: recentOrdersError } = await supabase
             .from('orders')
             .select(`
@@ -229,13 +225,11 @@ const OrderConfirmation = () => {
             const orderData = recentOrders[0];
             console.log('Found recent order:', orderData);
             
-            // Update URL with orderId and remove sessionId for better bookmarking
             const url = new URL(window.location.href);
             url.searchParams.delete('session_id');
             url.searchParams.set('orderId', orderData.id.toString());
             window.history.replaceState({}, '', url.toString());
             
-            // Parse shipping_address if it's a string
             let shippingAddress = orderData.shipping_address;
             if (typeof shippingAddress === 'string') {
               try {
@@ -258,7 +252,6 @@ const OrderConfirmation = () => {
               items: orderData.order_items
             });
             
-            // If this is a Packeta order without a tracking number, process it
             if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
               await processPacketaOrder({
                 id: orderData.id,
@@ -270,10 +263,15 @@ const OrderConfirmation = () => {
             }
             
             clearCart();
+            setOrderLoaded(true);
           } else {
             console.error('No recent orders found after session processing');
             throw new Error('Your payment was successful, but we could not find your order. Please contact customer support.');
           }
+        }
+        else if (!orderId && !sessionId) {
+          console.error('No order information provided');
+          throw new Error('No order information provided');
         }
       } catch (err) {
         console.error('Error loading order details:', err);
@@ -284,7 +282,7 @@ const OrderConfirmation = () => {
     };
     
     fetchOrderDetails();
-  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed]);
+  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed, orderLoaded, sessionVerificationAttempted, orderDetails]);
 
   const requestTracking = async () => {
     if (!orderDetails || !user) return;
@@ -335,10 +333,8 @@ const OrderConfirmation = () => {
     try {
       console.log('Processing Packeta order for order ID:', orderData.id);
       
-      // Prepare the order data
       let shippingAddress = orderData.shipping_address;
       
-      // If shipping_address is a string, parse it
       if (typeof shippingAddress === 'string') {
         try {
           shippingAddress = JSON.parse(shippingAddress);
@@ -347,7 +343,6 @@ const OrderConfirmation = () => {
         }
       }
       
-      // Check if we have all required data
       if (!shippingAddress || (shippingAddress.type === 'packeta' && !shippingAddress.pickupPoint)) {
         console.error('Invalid shipping address data for Packeta:', shippingAddress);
         toast({
@@ -358,7 +353,6 @@ const OrderConfirmation = () => {
         return;
       }
       
-      // Get user email
       let email = user?.email;
       if (!email) {
         const { data: userData } = await supabase
@@ -370,7 +364,6 @@ const OrderConfirmation = () => {
         email = userData?.email || '';
       }
       
-      // Create payload for the function
       const payload = {
         order_id: orderData.id,
         shipping_address: shippingAddress,
@@ -382,7 +375,6 @@ const OrderConfirmation = () => {
       
       console.log('Sending Packeta order with payload:', payload);
       
-      // Call the create-packeta-order function
       const { data, error } = await invokeFunction('create-packeta-order', {
         body: payload
       });
@@ -397,11 +389,9 @@ const OrderConfirmation = () => {
       } else {
         console.log('Packeta order created successfully:', data);
         
-        // Update the order details
         if (data.packeta_id || data.tracking_number) {
           const trackingNumber = data.tracking_number || data.packeta_id || data.barcode;
           
-          // Update the local state
           setOrderDetails(prev => prev ? {
             ...prev,
             tracking_number: trackingNumber
@@ -434,25 +424,44 @@ const OrderConfirmation = () => {
         throw new Error("Authentication required to process your order");
       }
       
-      // Verify the session with Stripe
-      const { data, error: verifyError } = await invokeFunction('verify-checkout-session', {
-        body: { 
+      // Verify the session with Stripe - Add explicit console logging for debugging
+      console.log('Calling verify-checkout-session with:', { sessionId, user_id: user.id });
+      
+      // Call Edge Function directly with explicit JSON stringify for debugging
+      const response = await fetch(`${window.location.origin}/functions/v1/verify-checkout-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
           sessionId,
           user_id: user.id
-        }
+        })
       });
       
-      if (verifyError) {
-        console.error('Session verification error:', verifyError);
-        throw new Error(`Session verification failed: ${verifyError}`);
+      // Log raw response
+      console.log('Raw Edge Function response:', response.status, response.statusText);
+      
+      // Try to parse the response
+      let data;
+      try {
+        data = await response.json();
+        console.log('Parsed Edge Function response:', data);
+      } catch (parseError) {
+        console.error('Error parsing Edge Function response:', parseError);
+        const rawText = await response.text();
+        console.log('Raw response text:', rawText);
+        throw new Error(`Failed to parse Edge Function response: ${parseError}`);
       }
       
-      if (!data?.success) {
-        console.error('Invalid session data received:', data);
-        throw new Error('Invalid session data received');
+      // Check for errors
+      if (!response.ok) {
+        console.error('Edge Function error:', data);
+        throw new Error(`Session verification failed: ${data.error || response.statusText}`);
       }
       
-      console.log('Session verified:', data);
+      // Process successful response
+      console.log('Session verified successfully:', data);
       
       // Clear the cart after successful payment
       clearCart();
@@ -502,8 +511,8 @@ const OrderConfirmation = () => {
           
         if (orderError) {
           console.error('Error fetching order:', orderError);
-          // Don't throw an error here, let the component try to find recent orders instead
-          // We'll set a flag to indicate that the component should try to recover
+          // Instead of silently returning, set the orderLoaded state
+          setOrderLoaded(true);
           return;
         }
         
@@ -543,14 +552,20 @@ const OrderConfirmation = () => {
               order_items: orderData.order_items
             });
           }
+          
+          // Mark that we've loaded an order
+          setOrderLoaded(true);
         }
       } else {
         console.error('No order_id in response:', data);
-        // Let the component try to recover by finding the most recent order
+        // Mark that we've completed session verification even without an order
+        setOrderLoaded(true);
       }
     } catch (err) {
       console.error('Error processing Stripe session:', err);
       setError('There was an error processing your payment. Please contact customer support.');
+      // Even though there was an error, mark as loaded to prevent infinite loops
+      setOrderLoaded(true);
     }
   };
 
