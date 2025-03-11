@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -5,37 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
 import { CartItem } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
-
-interface ShippingAddressType {
-  fullName?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  state?: string;
-  zipCode?: string;
-  country?: string;
-  phone?: string;
-  type?: string;
-  pickupPoint?: {
-    id: string;
-    name: string;
-    address: string;
-    zip: string;
-    city: string;
-  };
-  billingAddress?: {
-    fullName: string;
-    addressLine1: string;
-    addressLine2?: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-    phone?: string;
-  };
-  // For additional properties
-  [key: string]: string | number | boolean | object | undefined;
-}
+import { ShippingAddress } from '@/types/supabase-custom';
 
 interface CheckoutItem {
   name: string;
@@ -52,7 +23,7 @@ interface StripePaymentFormProps {
   disabled?: boolean;
   cartItems?: CartItem[];
   shippingMethod?: string;
-  shippingAddress?: ShippingAddressType;
+  shippingAddress?: ShippingAddress;
 }
 
 export const StripePaymentForm = ({ 

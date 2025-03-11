@@ -1,552 +1,217 @@
+
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check, Package, ShoppingBag, Truck, AlertCircle } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useCart } from '@/contexts/CartContext';
-import { useToast } from '@/hooks/use-toast';
+import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
-
-interface OrderItem {
-  id: number;
-  product_id: number;
-  product_name: string;
-  product_price: number;
-  quantity: number;
-}
-
-interface PacketaPoint {
-  id: string;
-  name: string;
-  address: string;
-  zip: string;
-  city: string;
-}
-
-interface BillingAddress {
-  fullName: string;
-  addressLine1: string;
-  addressLine2?: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  country: string;
-  phone?: string;
-}
-
-interface ShippingAddress {
-  // Standard shipping address
-  fullName?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  state?: string;
-  zipCode?: string;
-  country?: string;
-  phone?: string;
-  
-  // Packeta specific fields
-  type?: 'packeta';
-  pickupPoint?: PacketaPoint;
-  billingAddress?: BillingAddress;
-  
-  // For handling deserialization from database
-  [key: string]: string | number | boolean | object | undefined;
-}
-
-interface OrderDetails {
-  id: string | number;
-  status: string;
-  paymentMethod: string;
-  date: Date;
-  shipping_method: string;
-  total: number;
-  shipping_address: ShippingAddress;
-  tracking_number?: string;
-  items?: OrderItem[];
-}
+import { useToast } from '@/hooks/use-toast';
+import { useSupabaseFunctions } from '@/hooks/useSupabaseFunctions';
+import { useAuth } from '@/contexts/AuthContext';
+import { ShoppingBag, Check, Truck, AlertCircle } from 'lucide-react';
+import { Order, OrderItem } from '@/types/supabase-custom';
+import OrderSummary from '@/components/order/OrderSummary';
+import ShippingDetails from '@/components/order/ShippingDetails';
+import OrderItems from '@/components/order/OrderItems';
 
 const OrderConfirmation = () => {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { clearCart } = useCart();
+  const [searchParams] = useSearchParams();
+  const sessionId = searchParams.get('session_id');
+  const orderId = searchParams.get('orderId');
   const { toast } = useToast();
   const { post: invokeFunction } = useSupabaseFunctions();
-  const [searchParams] = useSearchParams();
-  const orderId = searchParams.get('orderId');
-  const sessionId = searchParams.get('session_id');
-  
+  const { user } = useAuth();
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
-  const [isPacketaProcessing, setIsPacketaProcessing] = useState(false);
-  const [isTrackingLoading, setIsTrackingLoading] = useState(false);
-  const [sessionProcessed, setSessionProcessed] = useState(false);
-  const [orderLoaded, setOrderLoaded] = useState(false);
-  const [sessionVerificationAttempted, setSessionVerificationAttempted] = useState(false);
-  
+  const [orderDetails, setOrderDetails] = useState<Order | null>(null);
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+
   useEffect(() => {
-    console.log('OrderConfirmation mounted with params:', { orderId, sessionId, user: !!user, orderLoaded, sessionProcessed, sessionVerificationAttempted });
-    
-    if (orderLoaded && orderDetails) {
-      console.log('Order already loaded, skipping fetch:', orderDetails.id);
-      return;
-    }
-    
-    if (sessionId && !sessionProcessed) {
-      setSessionProcessed(true);
-    }
-    
-    if (sessionId && !user) {
-      setIsLoading(false);
-      setError("Authentication required. Please sign in to view your order.");
-      return;
-    }
-    
-    if (!user && !orderId && !sessionId) {
-      navigate('/');
-      return;
-    }
+    if (!user) return;
     
     const fetchOrderDetails = async () => {
-      if (!orderLoaded) {
-        setIsLoading(true);
-      }
-      setError(null);
-      
       try {
+        setIsLoading(true);
+        setError(null);
+        
+        // If we have a direct order ID, fetch that order
         if (orderId) {
-          console.log(`Fetching order details for order ID: ${orderId}`);
-          const { data: orderData, error: orderError } = await supabase
-            .from('orders')
-            .select(`
-              id, 
-              status, 
-              total, 
-              shipping_method, 
-              shipping_address, 
-              payment_intent_id, 
-              tracking_number,
-              created_at,
-              order_items:order_items(
-                id, 
-                product_id, 
-                product_name, 
-                product_price, 
-                quantity
-              )
-            `)
-            .eq('id', Number(orderId))
-            .single();
-          
-          if (orderError) {
-            console.error('Error fetching order:', orderError);
-            throw new Error('Could not find order details');
-          }
-          
-          if (orderData) {
-            console.log('Order data retrieved:', orderData);
-            
-            let shippingAddress = orderData.shipping_address;
-            if (typeof shippingAddress === 'string') {
-              try {
-                shippingAddress = JSON.parse(shippingAddress);
-              } catch (e) {
-                console.error('Error parsing shipping address:', e);
-                shippingAddress = { error: 'Failed to parse shipping address' };
-              }
-            }
-            
-            setOrderDetails({
-              id: orderData.id,
-              status: orderData.status,
-              paymentMethod: orderData.payment_intent_id ? 'Card' : 'Cash on Delivery',
-              date: new Date(orderData.created_at),
-              shipping_method: orderData.shipping_method,
-              total: orderData.total,
-              shipping_address: shippingAddress as ShippingAddress,
-              tracking_number: orderData.tracking_number,
-              items: orderData.order_items
-            });
-            
-            if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
-              await processPacketaOrder({
-                id: orderData.id,
-                shipping_address: shippingAddress as ShippingAddress,
-                shipping_method: orderData.shipping_method,
-                payment_intent_id: orderData.payment_intent_id,
-                order_items: orderData.order_items
-              });
-            }
-            
-            clearCart();
-            setOrderLoaded(true);
-          }
+          console.log('Fetching order by ID:', orderId);
+          await getOrderById(orderId);
+          return;
         }
-        else if (sessionId && user && !sessionVerificationAttempted) {
-          console.log(`Processing Stripe session: ${sessionId}`);
-          setSessionVerificationAttempted(true);
-          await handleStripeSession(sessionId);
+        
+        // If we have a session ID from Stripe, we need to verify it and get/create the order
+        if (sessionId) {
+          console.log('Processing Stripe session:', sessionId);
+          await processStripeSession(sessionId);
+          return;
         }
-        else if (sessionId && sessionProcessed && !orderId && user && !orderLoaded) {
-          console.log('Session was processed, but no order ID yet. Checking for recent orders...');
-          
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
-          const { data: recentOrders, error: recentOrdersError } = await supabase
-            .from('orders')
-            .select(`
-              id, 
-              status, 
-              total, 
-              shipping_method, 
-              shipping_address, 
-              payment_intent_id, 
-              tracking_number,
-              created_at,
-              order_items:order_items(
-                id, 
-                product_id, 
-                product_name, 
-                product_price, 
-                quantity
-              )
-            `)
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(1);
-            
-          if (recentOrdersError) {
-            console.error('Error checking recent orders:', recentOrdersError);
-          } else if (recentOrders && recentOrders.length > 0) {
-            const orderData = recentOrders[0];
-            console.log('Found recent order:', orderData);
-            
-            const url = new URL(window.location.href);
-            url.searchParams.delete('session_id');
-            url.searchParams.set('orderId', orderData.id.toString());
-            window.history.replaceState({}, '', url.toString());
-            
-            let shippingAddress = orderData.shipping_address;
-            if (typeof shippingAddress === 'string') {
-              try {
-                shippingAddress = JSON.parse(shippingAddress);
-              } catch (e) {
-                console.error('Error parsing shipping address:', e);
-                shippingAddress = { error: 'Failed to parse shipping address' };
-              }
-            }
-            
-            setOrderDetails({
-              id: orderData.id,
-              status: orderData.status,
-              paymentMethod: orderData.payment_intent_id ? 'Card' : 'Cash on Delivery',
-              date: new Date(orderData.created_at),
-              shipping_method: orderData.shipping_method,
-              total: orderData.total,
-              shipping_address: shippingAddress as ShippingAddress,
-              tracking_number: orderData.tracking_number,
-              items: orderData.order_items
-            });
-            
-            if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
-              await processPacketaOrder({
-                id: orderData.id,
-                shipping_address: shippingAddress as ShippingAddress,
-                shipping_method: orderData.shipping_method,
-                payment_intent_id: orderData.payment_intent_id,
-                order_items: orderData.order_items
-              });
-            }
-            
-            clearCart();
-            setOrderLoaded(true);
-          } else {
-            console.error('No recent orders found after session processing');
-            throw new Error('Your payment was successful, but we could not find your order. Please contact customer support.');
-          }
-        }
-        else if (!orderId && !sessionId) {
-          console.error('No order information provided');
-          throw new Error('No order information provided');
-        }
+        
+        // If we don't have either, show an error
+        console.error('No order information provided');
+        throw new Error('No order information provided');
+        
       } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         console.error('Error loading order details:', err);
-        setError('Could not load order details. Please contact customer support.');
+        setError(errorMessage);
+        toast({
+          title: 'Error',
+          description: `Could not load order details: ${errorMessage}`,
+          variant: 'destructive',
+        });
       } finally {
         setIsLoading(false);
       }
     };
     
     fetchOrderDetails();
-  }, [orderId, sessionId, user, navigate, clearCart, toast, sessionProcessed, orderLoaded, sessionVerificationAttempted, orderDetails]);
+  }, [sessionId, orderId, user, toast, invokeFunction]);
 
-  const requestTracking = async () => {
-    if (!orderDetails || !user) return;
-    
-    setIsTrackingLoading(true);
-    
+  const getOrderById = async (id: string) => {
     try {
-      const { data, error } = await invokeFunction('track-order', {
-        body: { order_id: orderDetails.id }
-      });
-      
-      if (error) {
-        throw new Error(`Error tracking order: ${error}`);
-      }
-      
-      if (data?.tracking_number) {
-        setOrderDetails(prev => prev ? {
-          ...prev,
-          tracking_number: data.tracking_number
-        } : null);
+      // Get the order
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user?.id)
+        .single();
         
-        toast({
-          title: "Tracking Information",
-          description: `Your tracking number is: ${data.tracking_number}`,
-        });
+      if (orderError) {
+        throw new Error(`Order not found: ${orderError.message}`);
       }
+      
+      if (!order) {
+        throw new Error('Order not found');
+      }
+      
+      console.log('Order found:', order);
+      
+      // Get the order items
+      const { data: items, error: itemsError } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', id);
+        
+      if (itemsError) {
+        console.error('Error fetching order items:', itemsError);
+      }
+      
+      console.log('Order items:', items);
+      
+      setOrderDetails(order as Order);
+      setOrderItems(items || []);
+      
     } catch (err) {
-      console.error('Error requesting tracking:', err);
-      toast({
-        title: "Tracking Error",
-        description: "Could not retrieve tracking information. Please try again later.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsTrackingLoading(false);
+      throw err;
     }
   };
 
-  const processPacketaOrder = async (orderData: {
-    id: number;
-    shipping_address: ShippingAddress;
-    shipping_method: string;
-    payment_intent_id?: string;
-    order_items?: OrderItem[];
-  }) => {
-    setIsPacketaProcessing(true);
-    
+  const processStripeSession = async (sessionId: string) => {
     try {
-      console.log('Processing Packeta order for order ID:', orderData.id);
-      
-      let shippingAddress = orderData.shipping_address;
-      
-      if (typeof shippingAddress === 'string') {
-        try {
-          shippingAddress = JSON.parse(shippingAddress);
-        } catch (e) {
-          console.error('Error parsing shipping address:', e);
-        }
-      }
-      
-      if (!shippingAddress || (shippingAddress.type === 'packeta' && !shippingAddress.pickupPoint)) {
-        console.error('Invalid shipping address data for Packeta:', shippingAddress);
-        toast({
-          title: 'Order Processing Error',
-          description: 'Missing pickup point information. Please contact customer support.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      let email = user?.email;
-      if (!email) {
-        const { data: userData } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('id', user?.id)
-          .single();
-          
-        email = userData?.email || '';
-      }
-      
-      const payload = {
-        order_id: orderData.id,
-        shipping_address: shippingAddress,
-        items: orderData.order_items || [],
-        user_id: user?.id,
-        email: email,
-        payment_method: orderData.payment_intent_id ? 'card' : 'cod'
-      };
-      
-      console.log('Sending Packeta order with payload:', payload);
-      
-      const { data, error } = await invokeFunction('create-packeta-order', {
-        body: payload
+      // Verify the Stripe session
+      const { data, error } = await invokeFunction('verify-checkout-session', {
+        body: { session_id: sessionId }
       });
       
       if (error) {
-        console.error('Error creating Packeta order:', error);
-        toast({
-          title: 'Order Processing',
-          description: 'Your order has been received, but there was a delay in shipping processing. Our team will handle it shortly.',
-          variant: 'default',
-        });
-      } else {
-        console.log('Packeta order created successfully:', data);
-        
-        if (data.packeta_id || data.tracking_number) {
-          const trackingNumber = data.tracking_number || data.packeta_id || data.barcode;
-          
-          setOrderDetails(prev => prev ? {
-            ...prev,
-            tracking_number: trackingNumber
-          } : null);
-          
-          toast({
-            title: 'Order Processing',
-            description: 'Your order has been received and is being prepared for shipping.',
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error sending order to Packeta:', err);
-      toast({
-        title: 'Shipping Processing Error',
-        description: 'There was an error processing your shipping information. Our team has been notified.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsPacketaProcessing(false);
-    }
-  };
-  
-  const handleStripeSession = async (sessionId: string) => {
-    try {
-      console.log('Verifying Stripe session:', sessionId);
-      
-      // Ensure user is authenticated
-      if (!user || !user.id) {
-        throw new Error("Authentication required to process your order");
+        console.error('Session verification error:', error);
+        throw new Error(`Session verification failed: ${error}`);
       }
       
-      // Verify the session with Stripe - Add explicit console logging for debugging
-      console.log('Calling verify-checkout-session with:', { sessionId, user_id: user.id });
+      console.log('Session verified:', data);
       
-      // Use invokeFunction helper instead of direct fetch
-      const { data, error: verifyError } = await invokeFunction('verify-checkout-session', {
-        body: { 
-          sessionId,
-          user_id: user.id
-        }
-      });
-      
-      // Check for errors from the function call
-      if (verifyError) {
-        console.error('Session verification error:', verifyError);
-        throw new Error(`Session verification failed: ${verifyError}`);
-      }
-      
-      // Process successful response
-      console.log('Session verified successfully:', data);
-      
-      // Clear the cart after successful payment
-      clearCart();
-      
-      toast({
-        title: "Payment Successful",
-        description: "Your payment has been processed successfully.",
-      });
-      
-      // Check if we have an order ID
-      if (data?.order_id) {
-        console.log(`Order created with ID: ${data.order_id}`);
+      // Check if the session already created an order
+      if (data.session?.metadata?.order_id) {
+        const orderId = data.session.metadata.order_id;
         
-        // Update URL with orderId and remove sessionId
-        const url = new URL(window.location.href);
-        url.searchParams.delete('session_id');
-        url.searchParams.set('orderId', data.order_id.toString());
-        
-        // Use history.replaceState to update URL without navigation
-        window.history.replaceState({}, '', url.toString());
-        
-        // Add a small delay to ensure the order is saved in the database
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Fetch the order details
-        const { data: orderData, error: orderError } = await supabase
+        // First check if the order already exists in our database
+        const { data: existingOrder, error: existingError } = await supabase
           .from('orders')
-          .select(`
-            id, 
-            status, 
-            total, 
-            shipping_method, 
-            shipping_address, 
-            payment_intent_id, 
-            tracking_number,
-            created_at,
-            order_items:order_items(
-              id, 
-              product_id, 
-              product_name, 
-              product_price, 
-              quantity
-            )
-          `)
-          .eq('id', data.order_id)
+          .select('*')
+          .eq('id', orderId)
           .single();
           
-        if (orderError) {
-          console.error('Error fetching order:', orderError);
-          // Instead of silently returning, set the orderLoaded state
-          setOrderLoaded(true);
+        if (!existingError && existingOrder) {
+          console.log('Order already exists, fetching details:', orderId);
+          await getOrderById(orderId);
           return;
         }
-        
-        if (orderData) {
-          console.log('Order data retrieved:', orderData);
-          
-          // Parse shipping_address if it's a string
-          let shippingAddress = orderData.shipping_address;
-          if (typeof shippingAddress === 'string') {
-            try {
-              shippingAddress = JSON.parse(shippingAddress);
-            } catch (e) {
-              console.error('Error parsing shipping address:', e);
-              shippingAddress = { error: 'Failed to parse shipping address' };
-            }
-          }
-          
-          setOrderDetails({
-            id: orderData.id,
-            status: orderData.status,
-            paymentMethod: orderData.payment_intent_id ? 'Card' : 'Cash on Delivery',
-            date: new Date(orderData.created_at),
-            shipping_method: orderData.shipping_method,
-            total: orderData.total,
-            shipping_address: shippingAddress as ShippingAddress,
-            tracking_number: orderData.tracking_number,
-            items: orderData.order_items
-          });
-          
-          // If this is a Packeta order without a tracking number, process it
-          if (orderData.shipping_method === 'packeta' && !orderData.tracking_number) {
-            await processPacketaOrder({
-              id: orderData.id,
-              shipping_address: shippingAddress as ShippingAddress,
-              shipping_method: orderData.shipping_method,
-              payment_intent_id: orderData.payment_intent_id,
-              order_items: orderData.order_items
-            });
-          }
-          
-          // Mark that we've loaded an order
-          setOrderLoaded(true);
-        }
-      } else {
-        console.error('No order_id in response:', data);
-        // Mark that we've completed session verification even without an order
-        setOrderLoaded(true);
       }
+      
+      // If the order doesn't exist, create it
+      const sessionData = data.session;
+      const lineItems = data.lineItems || [];
+      
+      if (!sessionData?.metadata) {
+        throw new Error('Missing metadata in session');
+      }
+      
+      // Extract order information from session metadata
+      const { user_id, shipping_method, shipping_address: shippingAddressStr } = sessionData.metadata;
+      
+      let shippingAddress;
+      try {
+        shippingAddress = JSON.parse(shippingAddressStr);
+      } catch (e) {
+        console.error('Error parsing shipping address:', e);
+        throw new Error('Invalid shipping address format');
+      }
+      
+      // Prepare order data
+      const orderData = {
+        shipping_address: shippingAddress,
+        total: sessionData.amount_total / 100, // Convert cents to dollars
+        shipping_method: shipping_method || 'standard',
+        payment_status: sessionData.payment_status,
+      };
+      
+      // Prepare order items
+      const orderItems = lineItems.map((item: any) => ({
+        product_id: parseInt(item.price?.product?.metadata?.product_id) || null,
+        product_name: item.description || 'Product',
+        product_price: (item.price?.unit_amount || 0) / 100, // Convert cents to dollars
+        quantity: item.quantity || 1
+      }));
+      
+      // Create the order
+      console.log('Creating order with data:', {
+        orderData,
+        orderItems,
+        user_id,
+        payment_intent_id: sessionData.payment_intent
+      });
+      
+      const { data: orderResponse, error: orderError } = await invokeFunction('create-order', {
+        body: {
+          order_data: orderData,
+          order_items: orderItems,
+          user_id: user_id || user?.id,
+          payment_intent_id: sessionData.payment_intent
+        }
+      });
+      
+      if (orderError) {
+        console.error('Error creating order:', orderError);
+        throw new Error(`Failed to create order: ${orderError}`);
+      }
+      
+      console.log('Order created successfully:', orderResponse);
+      
+      // Fetch the complete order details
+      if (orderResponse.order_id) {
+        await getOrderById(orderResponse.order_id);
+      } else {
+        throw new Error('No order ID returned from order creation');
+      }
+      
     } catch (err) {
-      console.error('Error processing Stripe session:', err);
-      setError('There was an error processing your payment. Please contact customer support.');
-      // Even though there was an error, mark as loaded to prevent infinite loops
-      setOrderLoaded(true);
+      throw err;
     }
   };
 
@@ -554,10 +219,49 @@ const OrderConfirmation = () => {
     return (
       <Layout>
         <div className="container mx-auto px-4 py-16 pt-24">
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-8"></div>
-            <h1 className="text-2xl font-bold mb-4">Processing Your Order...</h1>
-            <p className="text-gray-600">Please wait while we confirm your order details.</p>
+          <div className="flex justify-center items-center py-16">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+            <span className="ml-3 text-lg">Loading order details...</span>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-16 pt-24">
+          <Alert variant="destructive" className="mb-8">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+          
+          <div className="text-center">
+            <Button asChild variant="outline">
+              <a href="/products">Continue Shopping</a>
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!orderDetails) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-16 pt-24">
+          <Alert className="mb-8">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>No Order Found</AlertTitle>
+            <AlertDescription>We couldn't find the order you're looking for.</AlertDescription>
+          </Alert>
+          
+          <div className="text-center">
+            <Button asChild variant="outline">
+              <a href="/products">Continue Shopping</a>
+            </Button>
           </div>
         </div>
       </Layout>
@@ -567,193 +271,147 @@ const OrderConfirmation = () => {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-16 pt-24">
-        <div className="max-w-2xl mx-auto">
-          {error ? (
-            <div className="text-center mb-8">
-              <div className="rounded-full bg-red-100 p-4 w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="h-8 w-8 text-red-600" />
-              </div>
-              <h1 className="text-3xl font-bold mb-4">There Was a Problem</h1>
-              <Alert variant="destructive" className="mb-4">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-              <Button variant="outline" asChild>
-                <Link to="/checkout">Return to Checkout</Link>
-              </Button>
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-8">
+            <div className="h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="h-8 w-8" />
             </div>
-          ) : (
-            <>
-              <div className="text-center mb-8">
-                <div className="rounded-full bg-green-100 p-4 w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                  <Check className="h-8 w-8 text-green-600" />
-                </div>
-                
-                <h1 className="text-3xl font-bold mb-4">Order Successfully Placed!</h1>
-                
-                <p className="text-gray-600 mb-8">
-                  Thank you for your order. We'll send you a confirmation email with your order details.
-                </p>
-              </div>
-              
-              <div className="bg-gray-50 rounded-lg p-6 mb-8">
-                <h2 className="text-lg font-medium mb-4">Order Summary</h2>
-                
-                <div className="space-y-4 mb-4">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Order Number</span>
-                    <span className="font-medium">#{orderDetails?.id}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Date</span>
-                    <span>{orderDetails?.date.toLocaleDateString()}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Payment Status</span>
-                    <span className={`font-medium ${orderDetails?.status === 'paid' ? 'text-green-600' : 'text-orange-500'}`}>
-                      {orderDetails?.status === 'paid' ? 'Paid' : 
-                       orderDetails?.status === 'processing' ? 'Processing' : 'Pending'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Payment Method</span>
-                    <span>{orderDetails?.paymentMethod}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Shipping Method</span>
-                    <span className="capitalize">{orderDetails?.shipping_method}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total</span>
-                    <span className="font-medium">${orderDetails?.total.toFixed(2)}</span>
-                  </div>
-                  
-                  {orderDetails?.tracking_number && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Tracking Number</span>
-                      <span className="font-medium">{orderDetails.tracking_number}</span>
-                    </div>
-                  )}
-                </div>
-                
-                {isPacketaProcessing && (
-                  <Alert className="mb-4">
-                    <AlertDescription>
-                      We're processing your shipping information. This may take a moment...
-                    </AlertDescription>
-                  </Alert>
-                )}
-                
-                {!orderDetails?.tracking_number && orderDetails?.status !== 'pending' && (
-                  <div className="mb-4">
-                    <Button 
-                      onClick={requestTracking}
-                      disabled={isTrackingLoading}
-                      className="w-full"
-                    >
-                      {isTrackingLoading ? (
-                        <span className="flex items-center">
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Processing...
-                        </span>
-                      ) : (
-                        <span className="flex items-center">
-                          <Truck className="mr-2 h-4 w-4" />
-                          Get Tracking Information
-                        </span>
-                      )}
-                    </Button>
-                  </div>
-                )}
-                
-                <div className="pt-4 border-t border-gray-200">
-                  <h3 className="font-medium mb-2">Shipping Address</h3>
-                  {orderDetails?.shipping_address?.type === 'packeta' ? (
-                    <>
-                      <div className="text-sm">
-                        <p className="font-medium">{orderDetails.shipping_address.pickupPoint?.name}</p>
-                        <p>{orderDetails.shipping_address.pickupPoint?.address}</p>
-                        <p>{orderDetails.shipping_address.pickupPoint?.zip} {orderDetails.shipping_address.pickupPoint?.city}</p>
-                      </div>
-                      <p className="text-sm mt-2">
-                        <span className="font-medium">Recipient:</span> {orderDetails.shipping_address.fullName}
-                      </p>
-                      {orderDetails.shipping_address.phone && (
-                        <p className="text-sm">
-                          <span className="font-medium">Phone:</span> {orderDetails.shipping_address.phone}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-sm">
-                      <p>{orderDetails?.shipping_address?.fullName}</p>
-                      <p>{orderDetails?.shipping_address?.addressLine1}</p>
-                      {orderDetails?.shipping_address?.addressLine2 && (
-                        <p>{orderDetails.shipping_address.addressLine2}</p>
-                      )}
-                      <p>
-                        {orderDetails?.shipping_address?.city}, {orderDetails?.shipping_address?.state} {orderDetails?.shipping_address?.zipCode}
-                      </p>
-                      <p>{orderDetails?.shipping_address?.country}</p>
-                      {orderDetails?.shipping_address?.phone && (
-                        <p className="mt-1">
-                          <span className="font-medium">Phone:</span> {orderDetails.shipping_address.phone}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-                
-                {orderDetails?.items && orderDetails.items.length > 0 && (
-                  <div className="pt-4 mt-4 border-t border-gray-200">
-                    <h3 className="font-medium mb-2">Order Items</h3>
-                    <div className="space-y-3">
-                      {orderDetails.items.map((item, index) => (
-                        <div key={index} className="flex justify-between text-sm">
-                          <span>
-                            {item.product_name} <span className="text-gray-500">× {item.quantity}</span>
-                          </span>
-                          <span className="font-medium">${(item.product_price * item.quantity).toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="pt-4 mt-4 border-t border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <Truck className="h-4 w-4 text-green-600" />
-                    <span className="text-sm">
-                      Estimated delivery: 3-5 business days
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    You will receive shipping updates via email.
+            <h1 className="text-2xl sm:text-3xl font-bold">Order Confirmed!</h1>
+            <p className="text-gray-600 mt-2">
+              Thank you for your purchase. Your order has been received.
+            </p>
+          </div>
+          
+          <Card className="mb-8">
+            <CardContent className="pt-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-medium">Order #{orderDetails.id}</h2>
+                  <p className="text-sm text-gray-500">
+                    Placed on {new Date(orderDetails.created_at).toLocaleDateString()}
                   </p>
                 </div>
+                <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
+                  {orderDetails.status}
+                </div>
               </div>
+            </CardContent>
+          </Card>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-2">
+              <OrderItems items={orderItems} />
               
-              <div className="space-y-4 flex flex-col sm:flex-row sm:space-y-0 sm:space-x-4 justify-center">
-                <Button asChild>
-                  <Link to="/account">View Order History</Link>
-                </Button>
-                
-                <Button variant="outline" asChild>
-                  <Link to="/products">
-                    <ShoppingBag className="mr-2 h-4 w-4" />
-                    Continue Shopping
-                  </Link>
+              <Card className="mb-8">
+                <CardContent className="pt-6">
+                  <h2 className="text-lg font-medium mb-4">Order Status</h2>
+                  
+                  <div className="space-y-4">
+                    <div className="flex">
+                      <div className="h-8 w-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-3">
+                        <Check className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium">Order Confirmed</h3>
+                        <p className="text-sm text-gray-500">
+                          {new Date(orderDetails.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex">
+                      <div className={`h-8 w-8 ${
+                        orderDetails.status === 'processing' || orderDetails.status === 'shipped' || orderDetails.status === 'delivered'
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-gray-100 text-gray-400'
+                      } rounded-full flex items-center justify-center mr-3`}>
+                        {orderDetails.status === 'processing' || orderDetails.status === 'shipped' || orderDetails.status === 'delivered' 
+                          ? <Check className="h-4 w-4" /> 
+                          : <span className="text-xs">2</span>
+                        }
+                      </div>
+                      <div>
+                        <h3 className={
+                          orderDetails.status === 'processing' || orderDetails.status === 'shipped' || orderDetails.status === 'delivered'
+                            ? 'font-medium'
+                            : 'font-medium text-gray-400'
+                        }>Processing</h3>
+                        <p className="text-sm text-gray-500">
+                          {orderDetails.status === 'processing' || orderDetails.status === 'shipped' || orderDetails.status === 'delivered'
+                            ? 'Your order is being processed'
+                            : 'Pending'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex">
+                      <div className={`h-8 w-8 ${
+                        orderDetails.status === 'shipped' || orderDetails.status === 'delivered'
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-gray-100 text-gray-400'
+                      } rounded-full flex items-center justify-center mr-3`}>
+                        {orderDetails.status === 'shipped' || orderDetails.status === 'delivered'
+                          ? <Check className="h-4 w-4" /> 
+                          : <span className="text-xs">3</span>
+                        }
+                      </div>
+                      <div>
+                        <h3 className={
+                          orderDetails.status === 'shipped' || orderDetails.status === 'delivered'
+                            ? 'font-medium'
+                            : 'font-medium text-gray-400'
+                        }>Shipped</h3>
+                        <p className="text-sm text-gray-500">
+                          {orderDetails.status === 'shipped' || orderDetails.status === 'delivered'
+                            ? `Tracking number: ${orderDetails.tracking_number || 'Pending'}`
+                            : 'Your order will be shipped soon'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex">
+                      <div className={`h-8 w-8 ${
+                        orderDetails.status === 'delivered'
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-gray-100 text-gray-400'
+                      } rounded-full flex items-center justify-center mr-3`}>
+                        {orderDetails.status === 'delivered'
+                          ? <Check className="h-4 w-4" /> 
+                          : <span className="text-xs">4</span>
+                        }
+                      </div>
+                      <div>
+                        <h3 className={
+                          orderDetails.status === 'delivered'
+                            ? 'font-medium'
+                            : 'font-medium text-gray-400'
+                        }>Delivered</h3>
+                        <p className="text-sm text-gray-500">
+                          {orderDetails.status === 'delivered'
+                            ? 'Your order has been delivered'
+                            : 'Your order will be delivered soon'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div>
+              <OrderSummary order={orderDetails} items={orderItems} />
+              <ShippingDetails order={orderDetails} />
+              
+              <div className="text-center mt-6">
+                <Button asChild variant="outline" className="w-full">
+                  <a href="/products">Continue Shopping</a>
                 </Button>
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </div>
     </Layout>

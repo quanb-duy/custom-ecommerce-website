@@ -1,3 +1,4 @@
+
 // This file contains custom TypeScript interfaces for working with Supabase
 // Use these until the supabase/types.ts is automatically updated
 
@@ -25,6 +26,7 @@ export interface OrderItem {
 }
 
 export interface PickupPoint {
+  id: string;
   name: string;
   address: string;
   zip: string;
@@ -44,6 +46,18 @@ export interface ShippingAddress {
   country?: string;
   // Fields for packeta pickup
   pickupPoint?: PickupPoint;
+  billingAddress?: {
+    fullName: string;
+    addressLine1: string;
+    addressLine2?: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    phone?: string;
+  };
+  // For additional properties
+  [key: string]: string | number | boolean | object | undefined;
 }
 
 export interface Order {
@@ -56,6 +70,8 @@ export interface Order {
   shipping_address: ShippingAddress;
   payment_intent_id?: string;
   tracking_number?: string;
+  notes?: string;
+  carrier_data?: any;
   items?: OrderItem[];
 }
 
