@@ -48,6 +48,18 @@ const Account = () => {
     is_default: false
   });
 
+  const [isEditingAddress, setIsEditingAddress] = useState<string | null>(null);
+  const [editAddress, setEditAddress] = useState({
+    address_line1: '',
+    address_line2: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    country: '',
+    phone: '',
+    is_default: false
+  });
+
   useEffect(() => {
     if (!user) {
       navigate('/auth');
@@ -74,11 +86,12 @@ const Account = () => {
       if (error) throw error;
       
       setAddresses(data as Address[] || []);
-    } catch (error: any) {
-      console.error('Error fetching addresses:', error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error fetching addresses:', errorMessage);
       toast({
         title: "Failed to load addresses",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -119,11 +132,12 @@ const Account = () => {
       );
       
       setOrders(ordersWithItems as Order[]);
-    } catch (error: any) {
-      console.error('Error fetching orders:', error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error fetching orders:', errorMessage);
       toast({
         title: "Failed to load orders",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -261,11 +275,12 @@ const Account = () => {
       });
       setIsAddingAddress(false);
       fetchAddresses();
-    } catch (error: any) {
-      console.error('Error adding address:', error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error adding address:', errorMessage);
       toast({
         title: "Failed to add address",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -294,11 +309,12 @@ const Account = () => {
       });
       
       fetchAddresses();
-    } catch (error: any) {
-      console.error('Error setting default address:', error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error setting default address:', errorMessage);
       toast({
         title: "Failed to update default address",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -343,11 +359,12 @@ const Account = () => {
       }
       
       fetchAddresses();
-    } catch (error: any) {
-      console.error('Error removing address:', error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error removing address:', errorMessage);
       toast({
         title: "Failed to remove address",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -361,6 +378,75 @@ const Account = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+  };
+
+  const startEditingAddress = (address: Address) => {
+    setIsEditingAddress(address.id);
+    setEditAddress({
+      address_line1: address.address_line1,
+      address_line2: address.address_line2 || '',
+      city: address.city,
+      state: address.state,
+      postal_code: address.postal_code,
+      country: address.country,
+      phone: address.phone || '',
+      is_default: address.is_default
+    });
+  };
+
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setEditAddress(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const updateAddress = async () => {
+    if (!user || !isEditingAddress) return;
+    
+    try {
+      setIsLoading(true);
+      
+      const { error } = await supabase
+        .from('user_addresses')
+        .update({
+          address_line1: editAddress.address_line1,
+          address_line2: editAddress.address_line2 || null,
+          city: editAddress.city,
+          state: editAddress.state,
+          postal_code: editAddress.postal_code,
+          country: editAddress.country,
+          phone: editAddress.phone || null,
+          is_default: editAddress.is_default
+        })
+        .eq('id', isEditingAddress);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Address updated",
+        description: "Your address has been updated successfully.",
+      });
+      
+      // If this was set as default, update other addresses
+      if (editAddress.is_default) {
+        await updateDefaultAddress(isEditingAddress);
+      }
+      
+      setIsEditingAddress(null);
+      fetchAddresses();
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      console.error('Error updating address:', errorMessage);
+      toast({
+        title: "Failed to update address",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getOrderStatusBadge = (status: string) => {
@@ -676,33 +762,171 @@ const Account = () => {
                         <Badge className="mb-3">Default</Badge>
                       )}
                       
-                      <div className="space-y-1">
-                        <p>{address.address_line1}</p>
-                        {address.address_line2 && <p>{address.address_line2}</p>}
-                        <p>{address.city}, {address.state} {address.postal_code}</p>
-                        <p>{address.country}</p>
-                      </div>
-                      
-                      <div className="flex space-x-2 mt-4">
-                        {!address.is_default && (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => setDefaultAddress(address.id)}
-                            disabled={isLoading}
-                          >
-                            Set as Default
-                          </Button>
-                        )}
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => removeAddress(address.id)}
-                          disabled={isLoading}
-                        >
-                          Remove
-                        </Button>
-                      </div>
+                      {isEditingAddress === address.id ? (
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="edit_address_line1">Address Line 1</Label>
+                            <Input
+                              id="edit_address_line1"
+                              name="address_line1"
+                              value={editAddress.address_line1}
+                              onChange={handleEditInputChange}
+                              required
+                            />
+                          </div>
+                          
+                          <div>
+                            <Label htmlFor="edit_address_line2">Address Line 2 (Optional)</Label>
+                            <Input
+                              id="edit_address_line2"
+                              name="address_line2"
+                              value={editAddress.address_line2}
+                              onChange={handleEditInputChange}
+                            />
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="edit_city">City</Label>
+                              <Input
+                                id="edit_city"
+                                name="city"
+                                value={editAddress.city}
+                                onChange={handleEditInputChange}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="edit_state">State/Province</Label>
+                              <Input
+                                id="edit_state"
+                                name="state"
+                                value={editAddress.state}
+                                onChange={handleEditInputChange}
+                                required
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="edit_postal_code">Postal/Zip Code</Label>
+                              <Input
+                                id="edit_postal_code"
+                                name="postal_code"
+                                value={editAddress.postal_code}
+                                onChange={handleEditInputChange}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="edit_country">Country</Label>
+                              <Input
+                                id="edit_country"
+                                name="country"
+                                value={editAddress.country}
+                                onChange={handleEditInputChange}
+                                required
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="edit_phone">Phone Number</Label>
+                            <Input
+                              id="edit_phone"
+                              name="phone"
+                              value={editAddress.phone}
+                              onChange={handleEditInputChange}
+                              placeholder="e.g. +1 (555) 123-4567"
+                            />
+                          </div>
+                          
+                          <div className="flex items-center space-x-2 pt-2">
+                            <input
+                              type="checkbox"
+                              id="edit_is_default"
+                              name="is_default"
+                              checked={editAddress.is_default}
+                              onChange={handleEditInputChange}
+                              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                              disabled={address.is_default}
+                            />
+                            <Label htmlFor="edit_is_default" className="text-sm font-normal">
+                              Set as default shipping address
+                            </Label>
+                          </div>
+                          
+                          <div className="flex justify-end space-x-2 pt-4">
+                            <Button
+                              variant="outline"
+                              onClick={() => setIsEditingAddress(null)}
+                              disabled={isLoading}
+                            >
+                              Cancel
+                            </Button>
+                            <Button 
+                              onClick={updateAddress}
+                              disabled={
+                                !editAddress.address_line1 || 
+                                !editAddress.city || 
+                                !editAddress.state || 
+                                !editAddress.postal_code || 
+                                !editAddress.country || 
+                                isLoading
+                              }
+                            >
+                              {isLoading ? (
+                                <div className="flex items-center">
+                                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                                  Saving...
+                                </div>
+                              ) : (
+                                'Save Changes'
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-1">
+                            <p>{address.address_line1}</p>
+                            {address.address_line2 && <p>{address.address_line2}</p>}
+                            <p>{address.city}, {address.state} {address.postal_code}</p>
+                            <p>{address.country}</p>
+                            {address.phone && <p className="text-sm text-gray-600">Phone: {address.phone}</p>}
+                          </div>
+                          
+                          <div className="flex space-x-2 mt-4">
+                            {!address.is_default && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => setDefaultAddress(address.id)}
+                                disabled={isLoading}
+                              >
+                                Set as Default
+                              </Button>
+                            )}
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => startEditingAddress(address)}
+                              disabled={isLoading}
+                            >
+                              Edit
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => removeAddress(address.id)}
+                              disabled={isLoading}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
