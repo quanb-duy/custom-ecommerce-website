@@ -57,7 +57,7 @@ export interface ShippingAddress {
     phone?: string;
   };
   // Index signature for additional properties
-  [key: string]: string | number | boolean | object | undefined;
+  [key: string]: any; // Changed from 'string | number | boolean | object | undefined' to 'any' to avoid type issues
 }
 
 export interface Order {

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import Layout from '@/components/Layout';
@@ -158,7 +157,7 @@ const OrderConfirmation = () => {
           </div>
           <h1 className="text-2xl md:text-3xl font-bold">Thank You for Your Order!</h1>
           <p className="text-gray-600 mt-2">
-            Order #{order.id} has been placed successfully
+            Order #{order?.id} has been placed successfully
           </p>
         </div>
         
@@ -171,9 +170,9 @@ const OrderConfirmation = () => {
                 </h2>
                 
                 <div className="space-y-4">
-                  <OrderSummary order={order} />
+                  {order && <OrderSummary orderDetails={order} />}
                   <Separator />
-                  <ShippingDetails shippingAddress={order.shipping_address} />
+                  {order && <ShippingDetails shippingAddress={order.shipping_address} />}
                 </div>
               </CardContent>
             </Card>
@@ -181,7 +180,7 @@ const OrderConfirmation = () => {
             <Card>
               <CardContent className="pt-6">
                 <h2 className="text-xl font-semibold mb-4">Order Items</h2>
-                <OrderItems items={order.items || []} />
+                {order && <OrderItems items={order.items || []} />}
               </CardContent>
             </Card>
             
@@ -211,9 +210,9 @@ const OrderConfirmation = () => {
                   <div>
                     <h3 className="font-medium text-sm">Shipping Method</h3>
                     <p className="capitalize">
-                      {order.shipping_method === 'packeta' 
+                      {order?.shipping_method === 'packeta' 
                         ? 'Packeta Pickup Point' 
-                        : `${order.shipping_method} Shipping`}
+                        : `${order?.shipping_method} Shipping`}
                     </p>
                   </div>
                   
@@ -221,18 +220,18 @@ const OrderConfirmation = () => {
                     <h3 className="font-medium text-sm">Order Status</h3>
                     <div className="flex items-center">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        order.status === 'paid' ? 'bg-green-100 text-green-800' : 
-                        order.status === 'processing' ? 'bg-blue-100 text-blue-800' : 
-                        order.status === 'shipped' ? 'bg-purple-100 text-purple-800' : 
-                        order.status === 'delivered' ? 'bg-gray-100 text-gray-800' : 
+                        order?.status === 'paid' ? 'bg-green-100 text-green-800' : 
+                        order?.status === 'processing' ? 'bg-blue-100 text-blue-800' : 
+                        order?.status === 'shipped' ? 'bg-purple-100 text-purple-800' : 
+                        order?.status === 'delivered' ? 'bg-gray-100 text-gray-800' : 
                         'bg-yellow-100 text-yellow-800'
                       }`}>
-                        {order.status}
+                        {order?.status}
                       </span>
                     </div>
                   </div>
                   
-                  {order.tracking_number && (
+                  {order?.tracking_number && (
                     <div>
                       <h3 className="font-medium text-sm">Tracking Number</h3>
                       <p className="text-gray-600">{order.tracking_number}</p>

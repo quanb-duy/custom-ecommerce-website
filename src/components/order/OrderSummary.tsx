@@ -7,15 +7,22 @@ import { Truck } from 'lucide-react';
 
 interface OrderSummaryProps {
   orderDetails: OrderDetails;
-  isTrackingLoading: boolean;
-  onRequestTracking: () => void;
+  isTrackingLoading?: boolean;
+  onRequestTracking?: () => void;
+  order?: OrderDetails; // Add this to support both ways of passing the order
 }
 
 export const OrderSummary = ({ 
   orderDetails, 
-  isTrackingLoading, 
-  onRequestTracking 
+  isTrackingLoading = false, 
+  onRequestTracking = () => {}, 
+  order 
 }: OrderSummaryProps) => {
+  // Use order prop if orderDetails is not provided (for backward compatibility)
+  const orderData = orderDetails || order;
+  
+  if (!orderData) return null;
+  
   return (
     <div className="bg-gray-50 rounded-lg p-6">
       <h2 className="text-lg font-medium mb-4">Order Summary</h2>
@@ -23,46 +30,47 @@ export const OrderSummary = ({
       <div className="space-y-4 mb-4">
         <div className="flex justify-between">
           <span className="text-gray-600">Order Number</span>
-          <span className="font-medium">#{orderDetails.id}</span>
+          <span className="font-medium">#{orderData.id}</span>
         </div>
         
         <div className="flex justify-between">
           <span className="text-gray-600">Date</span>
-          <span>{new Date(orderDetails.created_at).toLocaleDateString()}</span>
+          <span>{new Date(orderData.created_at).toLocaleDateString()}</span>
         </div>
         
         <div className="flex justify-between">
           <span className="text-gray-600">Payment Status</span>
-          <span className={`font-medium ${orderDetails.status === 'paid' ? 'text-green-600' : 'text-orange-500'}`}>
-            {orderDetails.status === 'paid' ? 'Paid' : 
-             orderDetails.status === 'processing' ? 'Processing' : 'Pending'}
+          <span className={`font-medium ${orderData.status === 'paid' ? 'text-green-600' : 
+            orderData.status === 'processing' ? 'text-orange-500' : 'text-orange-500'}`}>
+            {orderData.status === 'paid' ? 'Paid' : 
+            orderData.status === 'processing' ? 'Processing' : 'Pending'}
           </span>
         </div>
         
         <div className="flex justify-between">
           <span className="text-gray-600">Payment Method</span>
-          <span>{orderDetails.payment_intent_id ? 'Card' : 'Cash on Delivery'}</span>
+          <span>{orderData.payment_intent_id ? 'Card' : 'Cash on Delivery'}</span>
         </div>
         
         <div className="flex justify-between">
           <span className="text-gray-600">Shipping Method</span>
-          <span className="capitalize">{orderDetails.shipping_method}</span>
+          <span className="capitalize">{orderData.shipping_method}</span>
         </div>
         
         <div className="flex justify-between">
           <span className="text-gray-600">Total</span>
-          <span className="font-medium">${orderDetails.total.toFixed(2)}</span>
+          <span className="font-medium">${orderData.total.toFixed(2)}</span>
         </div>
         
-        {orderDetails.tracking_number && (
+        {orderData.tracking_number && (
           <div className="flex justify-between">
             <span className="text-gray-600">Tracking Number</span>
-            <span className="font-medium">{orderDetails.tracking_number}</span>
+            <span className="font-medium">{orderData.tracking_number}</span>
           </div>
         )}
       </div>
       
-      {!orderDetails.tracking_number && orderDetails.status !== 'pending' && (
+      {!orderData.tracking_number && orderData.status !== 'pending' && onRequestTracking && (
         <Button 
           onClick={onRequestTracking}
           disabled={isTrackingLoading}
