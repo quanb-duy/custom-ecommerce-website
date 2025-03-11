@@ -85,10 +85,8 @@ export type Database = {
       }
       orders: {
         Row: {
-          carrier_data: string | null
           created_at: string
           id: number
-          notes: string | null
           payment_intent_id: string | null
           shipping_address: Json
           shipping_method: string
@@ -98,10 +96,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          carrier_data?: string | null
           created_at?: string
           id?: number
-          notes?: string | null
           payment_intent_id?: string | null
           shipping_address: Json
           shipping_method: string
@@ -111,10 +107,8 @@ export type Database = {
           user_id: string
         }
         Update: {
-          carrier_data?: string | null
           created_at?: string
           id?: number
-          notes?: string | null
           payment_intent_id?: string | null
           shipping_address?: Json
           shipping_method?: string
