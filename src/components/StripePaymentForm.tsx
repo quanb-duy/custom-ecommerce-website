@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -104,6 +105,12 @@ export const StripePaymentForm = ({
       // Ensure the shipping address is properly processed for metadata
       const processedShippingAddress = { ...shippingAddress };
       
+      // Confirm pickup point exists for Packeta shipping
+      if (shippingMethod === 'packeta' && 
+          (!processedShippingAddress.pickupPoint || !processedShippingAddress.pickupPoint.id)) {
+        throw new Error('Packeta shipping requires a valid pickup point selection');
+      }
+      
       // If it has a pickupPoint, ensure it's properly serialized
       if (processedShippingAddress.pickupPoint) {
         console.log('Including Packeta pickup point in metadata:', processedShippingAddress.pickupPoint);
@@ -118,6 +125,9 @@ export const StripePaymentForm = ({
       const shippingAddressStr = JSON.stringify(processedShippingAddress);
       console.log('Shipping address for metadata:', shippingAddressStr);
       
+      // Generate a unique order ID based on timestamp and a random value for collision prevention
+      const tempOrderId = `${new Date().getTime()}-${Math.floor(Math.random() * 1000)}`;
+      
       // Create a checkout session
       const { data, error: sessionError } = await invokeFunction('create-checkout-session', {
         body: {
@@ -125,8 +135,8 @@ export const StripePaymentForm = ({
           success_url: `${window.location.origin}/order-confirmation?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${window.location.origin}/checkout?canceled=true`,
           metadata: {
-            order_id: new Date().getTime().toString(), // Timestamp as temporary order_id
-            user_id: user.id, // Add the user_id to metadata
+            order_id: tempOrderId, 
+            user_id: user.id,
             shipping_method: shippingMethod,
             shipping_address: shippingAddressStr
           }

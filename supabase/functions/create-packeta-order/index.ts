@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -268,7 +269,7 @@ serve(async (req) => {
     if (parsedShippingAddress.fullName) {
       const nameParts = parsedShippingAddress.fullName.split(' ');
       firstName = nameParts[0] || '';
-      lastName = nameParts.slice(1).join(' ') || '';
+      lastName = nameParts.slice(1).join(' ') || 'Customer';
     }
     
     // 6. Create Packeta API request following the documentation format
@@ -277,14 +278,14 @@ serve(async (req) => {
         apiPassword: packetaApiPassword,
         packetAttributes: {
           number: `ORDER-${order_id}`,
-          name: firstName,
-          surname: lastName,
-          email: email,
+          name: firstName || 'Customer',
+          surname: lastName || 'Customer',
+          email: email || 'customer@example.com',
           phone: parsedShippingAddress.phone || '',
           addressId: pickupPointId,
           cod: payment_method === 'cod' ? totalValue : 0,
-          value: totalValue,
-          currency: "USD",
+          value: totalValue || 10.0, // Default min value if total is 0
+          currency: "EUR", // Changed to EUR based on API docs
           weight: 1.0, // Default weight in kg
           eshop: "MyEshop"
         }
@@ -308,6 +309,10 @@ serve(async (req) => {
         },
         body: xmlPayload
       });
+      
+      if (!response.ok) {
+        throw new Error(`Packeta API error: HTTP ${response.status} - ${response.statusText}`);
+      }
       
       const responseText = await response.text();
       console.log('Packeta API response:', responseText);
