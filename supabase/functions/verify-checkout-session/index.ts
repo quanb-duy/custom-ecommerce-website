@@ -171,6 +171,17 @@ serve(async (req) => {
         }
       }
       
+      // Format shipping method for display in order history
+      let shipping_method = session.metadata?.shipping_method || 'standard';
+      
+      // For Packeta shipping, include the pickup point details
+      if (shipping_address && typeof shipping_address === 'object' && 
+          shipping_address.type === 'packeta' && shipping_address.pickupPoint) {
+        const pickupPoint = shipping_address.pickupPoint;
+        shipping_method = `Packeta: ${pickupPoint.name}, ${pickupPoint.street}, ${pickupPoint.city}, ${pickupPoint.zip}`;
+        console.log('Enhanced shipping method with Packeta details:', shipping_method);
+      }
+      
       // Get user_id from metadata or from the request
       const user_id = session.metadata?.user_id;
       
@@ -190,7 +201,7 @@ serve(async (req) => {
               user_id: requestUserId,
               status: 'paid',
               total: session.amount_total / 100,
-              shipping_method: session.metadata?.shipping_method || 'standard',
+              shipping_method: shipping_method,
               shipping_address: shipping_address,
               payment_intent_id: session.payment_intent,
               created_at: new Date().toISOString()
@@ -204,7 +215,7 @@ serve(async (req) => {
               user_id: requestUserId,
               status: 'paid',
               total: session.amount_total / 100,
-              shipping_method: session.metadata?.shipping_method || 'standard',
+              shipping_method: shipping_method,
               shipping_address: shipping_address,
               payment_intent_id: session.payment_intent
             });
@@ -335,18 +346,18 @@ serve(async (req) => {
         console.log('Creating order with data:', {
           user_id,
           total: session.amount_total / 100,
-          shipping_method: session.metadata?.shipping_method || 'standard',
+          shipping_method: shipping_method,
           shipping_address: shipping_address
         });
         
-        // Create order in database
+        // Create the order
         const { data: newOrder, error: orderError } = await supabase
           .from('orders')
           .insert({
             user_id,
             status: 'paid',
             total: session.amount_total / 100,
-            shipping_method: session.metadata?.shipping_method || 'standard',
+            shipping_method: shipping_method,
             shipping_address: shipping_address,
             payment_intent_id: session.payment_intent,
             created_at: new Date().toISOString()
@@ -360,7 +371,7 @@ serve(async (req) => {
             user_id,
             status: 'paid',
             total: session.amount_total / 100,
-            shipping_method: session.metadata?.shipping_method || 'standard',
+            shipping_method: shipping_method,
             shipping_address: shipping_address,
             payment_intent_id: session.payment_intent
           });
